@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>ALERTA GPS — Navegação 3D, Clima, Rodovias, Mobilidade, Telecom, Energia e Mapa OMRSP</title>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root {
+    --bg-void: #040711;
+    --glass: rgba(10, 17, 34, 0.84);
+    --glass-strong: rgba(12, 21, 42, 0.95);
+    --border-neon: rgba(56, 189, 248, 0.32);
+    --cyan: #38bdf8;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --emerald: #10b981;
+    --amber: #f59e0b;
+    --rose: #f43f5e;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Inter, Roboto, system-ui, -apple-system, sans-serif;
+  }
+
+  html, body, #map {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-void);
+    color: var(--text);
+  }
+
+  /* CAMADAS CLIMÁTICAS VISUAIS QUANDO ATIVAS */
+  .weather-fx {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 6;
+    display: none;
+  }
+  .weather-fx.rain {
+    display: block;
+    background: repeating-linear-gradient(
+      105deg,
+      rgba(56, 189, 248, 0.14) 0px,
+      rgba(56, 189, 248, 0.14) 1px,
+      transparent 1px,
+      transparent 18px
+    );
+    animation: rainShift 0.35s linear infinite;
+  }
+  .weather-fx.fog {
+    display: block;
+    background: radial-gradient(circle at 50% 45%, rgba(203, 213, 225, 0.14), rgba(148, 163, 184, 0.28));
+  }
+  .weather-fx.storm {
+    display: block;
+    background: rgba(168, 85, 247, 0.08);
+    animation: flashPulse 4.5s infinite;
+  }
+  @keyframes rainShift {
+    from { background-position: 0 0; }
+    to { background-position: -36px 90px; }
+  }
+  @keyframes flashPulse {
+    0%, 92%, 100% { background: rgba(168, 85, 247, 0.04); }
+    94%, 96% { background: rgba(226, 232, 240, 0.24); }
+  }
+
+  /* BARRA SUPERIOR FLUTUANTE */
+  .top-bar {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    z-index: 20;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    pointer-events: none;
+  }
+  .top-bar > * { pointer-events: auto; }
+
+  .brand-chip {
+    background: var(--glass-strong);
+    border: 1px solid rgba(168, 85, 247, 0.45);
+    box-shadow: 0 0 20px rgba(56, 189, 248, 0.16);
+    border-radius: 16px;
+    padding: 9px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.4px;
+  }
+  .brand-chip span {
+    background: linear-gradient(90deg, var(--cyan), var(--purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .search-box {
+    flex: 1;
+    min-width: 240px;
+    position: relative;
+    background: var(--glass-strong);
+    border: 1px solid var(--border-neon);
+    border-radius: 16px;
+    padding: 5px 8px 5px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    backdrop-filter: blur(14px);
+  }
+  .search-box input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+    padding: 6px 2px;
+  }
+  .btn-neon {
+    background: linear-gradient(135deg, var(--blue), var(--purple));
+    color: #fff;
+    border: none;
+    border-radius: 11px;
+    padding: 8px 13px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-ghost {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 11px;
+    padding: 8px 11px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .btn-ghost.active, .btn-ghost:hover {
+    border-color: var(--cyan);
+    background: rgba(56, 189, 248, 0.15);
+  }
+
+  .search-results {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: var(--glass-strong);
+    border: 1px solid var(--border-neon);
+    border-radius: 14px;
+    max-height: 240px;
+    overflow-y: auto;
+    display: none;
+    z-index: 40;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.75);
+  }
+  .search-results.open { display: block; }
+  .search-item {
+    padding: 10px 13px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .search-item:hover { background: rgba(56, 189, 248, 0.14); }
+  .search-item strong { display: block; color: var(--cyan); font-size: 13px; }
+  .search-item small { color: var(--muted); }
+
+  .style-group {
+    display: flex;
+    gap: 5px;
+    background: var(--glass-strong);
+    border: 1px solid var(--border-neon);
+    border-radius: 16px;
+    padding: 5px;
+    backdrop-filter: blur(14px);
+  }
+
+  /* PAINEL LATERAL FLUTUANTE */
+  .drawer {
+    position: fixed;
+    top: 72px;
+    right: 12px;
+    width: 380px;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 156px);
+    overflow-y: auto;
+    z-index: 18;
+    background: var(--glass);
+    border: 1px solid var(--border-neon);
+    border-radius: 20px;
+    padding: 14px;
+    backdrop-filter: blur(16px);
+    box-shadow: 0 18px 48px rgba(0,0,0,0.65);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .card {
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 14px;
+    padding: 11px 12px;
+  }
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--cyan);
+  }
+  .meta-line {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 6px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding-top: 5px;
+  }
+  .badge-status {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+  }
+  .st-ok { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+  .st-warn { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
+  .st-off { background: rgba(244, 63, 94, 0.2); color: #fda4af; }
+
+  .kv-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .kv {
+    background: rgba(2, 6, 23, 0.55);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 8px;
+  }
+  .kv span { display: block; font-size: 10px; color: var(--muted); }
+  .kv strong { font-size: 13px; color: #fff; }
+
+  .omrsp-frame {
+    width: 100%;
+    height: 220px;
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 12px;
+    background: #060b18;
+    margin-top: 6px;
+  }
+
+  /* BANNER DE ALERTA INTELIGENTE */
+  .alert-toast {
+    position: fixed;
+    top: 72px;
+    left: 12px;
+    max-width: 360px;
+    z-index: 22;
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(245, 158, 11, 0.55);
+    border-left: 4px solid var(--amber);
+    border-radius: 14px;
+    padding: 10px 12px;
+    font-size: 12px;
+    backdrop-filter: blur(12px);
+    display: none;
+  }
+  .alert-toast.visible { display: block; }
+
+  /* CONTROLES LATERAIS DE MAPA */
+  .map-tools {
+    position: fixed;
+    left: 12px;
+    bottom: 76px;
+    z-index: 18;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* MENU INFERIOR (6 MÓDULOS + OMRSP + IA + CONFIG) */
+  .bottom-nav {
+    position: fixed;
+    bottom: 10px;
+    left: 12px;
+    right: 12px;
+    z-index: 24;
+    background: var(--glass-strong);
+    border: 1px solid var(--border-neon);
+    border-radius: 18px;
+    padding: 6px;
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 4px;
+    backdrop-filter: blur(16px);
+    box-shadow: 0 12px 36px rgba(0,0,0,0.75);
+  }
+  .nav-tab {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--muted);
+    border-radius: 12px;
+    padding: 7px 3px;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .nav-tab.active {
+    color: #fff;
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(168, 85, 247, 0.22));
+    border-color: rgba(56, 189, 248, 0.45);
+  }
+
+  /* MODAL CONFIGURAÇÕES & IMPORTAÇÃO KML/GEOJSON/JSON */
+  .modal-bg {
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 6, 23, 0.82);
+    backdrop-filter: blur(8px);
+    z-index: 50;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .modal-bg.open { display: flex; }
+  .modal-box {
+    width: 100%;
+    max-width: 480px;
+    background: #0b1326;
+    border: 1px solid var(--border-neon);
+    border-radius: 20px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  textarea {
+    width: 100%;
+    background: #040814;
+    color: var(--text);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 10px;
+    padding: 8px;
+    font-size: 12px;
+  }
+
+  @media (max-width: 820px) {
+    .drawer {
+      top: auto;
+      bottom: 78px;
+      right: 10px;
+      left: 10px;
+      width: auto;
+      max-height: 42vh;
+    }
+    .bottom-nav {
+      grid-template-columns: repeat(5, 1fr);
+    }
+    .map-tools {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="weatherFx" class="weather-fx"></div>
+
+<!-- TOPO: MARCA + BUSCA + ESTILO 3D -->
+<header class="top-bar">
+  <div class="brand-chip">🛰️ <span>ALERTA GPS</span></div>
+
+  <div class="search-box">
+    <span>🔍</span>
+    <input
+      id="searchInput"
+      type="text"
+      placeholder="Buscar local, endereço ou site OMRSP (ex: PMOR1, SIPMOR1, SIMIADTC, Marília)..."
+      autocomplete="off"
+    />
+    <button class="btn-neon" id="btnSearch">Buscar</button>
+    <div class="search-results" id="searchResults"></div>
+  </div>
+
+  <div class="style-group">
+    <button class="btn-ghost active" id="mode3dBtn">3D</button>
+    <button class="btn-ghost" id="modeSatBtn">Satélite</button>
+    <button class="btn-ghost" id="modeNightBtn">Noturno</button>
+  </div>
+</header>
+
+<!-- ALERTA INTELIGENTE (SOM + VISUAL) -->
+<div class="alert-toast" id="alertToast">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+    <strong id="alertToastTitle" style="color:#fcd34d">Alerta Ativo</strong>
+    <button class="btn-ghost" id="btnDismissAlert" style="padding:2px 7px;font-size:10px">✕</button>
+  </div>
+  <div id="alertToastBody" style="margin-top:4px;color:#e2e8f0"></div>
+  <div id="alertToastMeta" class="meta-line"></div>
+</div>
+
+<!-- FERRAMENTAS DE MAPA -->
+<div class="map-tools">
+  <button class="btn-ghost" id="btnCenter" title="Centralizar no GPS">🎯 GPS</button>
+  <button class="btn-ghost" id="btnTilt" title="Alternar inclinação 3D">📐 3D</button>
+  <button class="btn-ghost" id="btnClearRoute" title="Limpar rota">🗑️ Rota</button>
+</div>
+
+<!-- PAINEL LATERAL DO MÓDULO ATIVO -->
+<aside class="drawer" id="drawer"></aside>
+
+<!-- MENU INFERIOR: 6 MÓDULOS + OMRSP + IA + CONFIG -->
+<nav class="bottom-nav">
+  <button class="nav-tab active" data-tab="gps">🧭<span>GPS</span></button>
+  <button class="nav-tab" data-tab="clima">🌦️<span>Clima</span></button>
+  <button class="nav-tab" data-tab="rodovias">🛣️<span>Rodovias</span></button>
+  <button class="nav-tab" data-tab="transportes">🚆<span>Transportes</span></button>
+  <button class="nav-tab" data-tab="telefonia">📶<span>Telefonia</span></button>
+  <button class="nav-tab" data-tab="energia">⚡<span>Energia</span></button>
+  <button class="nav-tab" data-tab="omrsp">🗺️<span>OMRSP</span></button>
+  <button class="nav-tab" data-tab="ia">🤖<span>IA Rota</span></button>
+  <button class="nav-tab" data-tab="config">⚙️<span>Config</span></button>
+</nav>
+
+<!-- MODAL CONFIGURAÇÕES, ALERTAS E IMPORTAÇÃO KML/GEOJSON/JSON -->
+<div class="modal-bg" id="configModal">
+  <div class="modal-box">
+    <div class="card-head">
+      <strong style="font-size:14px">⚙️ Configurações & Dados Autorizados</strong>
+      <button class="btn-ghost" id="btnCloseModal">✕</button>
+    </div>
+
+    <label style="font-size:12px;display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="cfgAlertsEnabled" checked />
+      Ativar notificações visuais e sonoras de alertas
+    </label>
+
+    <label style="font-size:12px;display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="cfgVoiceEnabled" checked />
+      Ativar síntese de voz (Web Speech API)
+    </label>
+
+    <label style="font-size:12px;display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="cfgFollowGps" checked />
+      Centralização automática na posição GPS quando disponível
+    </label>
+
+    <div class="card">
+      <div class="card-title">Importar Pontos / Sites OMRSP (.KML, .GeoJSON, .JSON)</div>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:8px">
+        Importe o KML exportado do Mapa OMRSP ou cole um JSON com coordenadas reais dos sites (ex.: code, name, lat, lng, carrier).
+      </p>
+      <input type="file" id="fileImportInput" accept=".kml,.geojson,.json" style="font-size:11px;margin-bottom:8px" />
+      <textarea id="jsonPasteInput" rows="3" placeholder='Ex: [{"code":"PMOR1","name":"Site PMOR1","lat":-22.2148,"lng":-49.9462,"carrier":"TIM/Vivo"}]'></textarea>
+      <button class="btn-neon" id="btnApplyJson" style="margin-top:8px;width:100%">Salvar Dados no ALERTA GPS</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const OMRSP_MID = '1MNogDuJ0kYtkUUoZ4l_cnGOx4VGYNqY';
+  const OMRSP_VIEWER_URL = `https://www.google.com/maps/d/viewer?mid=${OMRSP_MID}`;
+  const OMRSP_EMBED_URL = `https://www.google.com/maps/d/embed?mid=${OMRSP_MID}`;
+
+  const SP_HIGHWAYS = [
+    'Rodovia Castelo Branco (SP-280)',
+    'Rodovia Raposo Tavares (SP-270)',
+    'Rodovia Marechal Rondon (SP-300)',
+    'Rodovia Washington Luís (SP-310)',
+    'Rodovia Comandante João Ribeiro de Barros (SP-294)',
+    'Rodovia Transbrasiliana (BR-153)',
+    'Rodovia dos Bandeirantes (SP-348)',
+    'Rodovia Anhanguera (SP-330)',
+    'Rodovia Presidente Dutra (BR-116)',
+    'Rodovia Régis Bittencourt (BR-116)',
+    'Rodovia Fernão Dias (BR-381)'
+  ];
+
+  const state = {
+    activeTab: 'gps',
+    mapMode: '3d',
+    vehicleMode: 'driving',
+    settings: {
+      alertsEnabled: true,
+      voiceEnabled: true,
+      followGps: true
+    },
+    omrsp: {
+      mid: OMRSP_MID,
+      viewerUrl: OMRSP_VIEWER_URL,
+      embedUrl: OMRSP_EMBED_URL,
+      showEmbed: true,
+      source: 'Google My Maps OMRSP (mid=1MNogDuJ0kYtkUUoZ4l_cnGOx4VGYNqY)',
+      updatedAt: null
+    },
+    gps: {
+      coords: null,
+      status: 'Aguardando permissão de localização',
+      source: 'Geolocation API (Navegador)',
+      updatedAt: null,
+      error: null
+    },
+    route: {
+      destination: null,
+      distanceKm: null,
+      durationMin: null,
+      geometry: null,
+      steps: [],
+      status: 'Nenhuma rota calculada',
+      source: 'OSRM Routing Service',
+      updatedAt: null
+    },
+    weather: {
+      current: null,
+      hourly: [],
+      daily: [],
+      radarAvailable: false,
+      status: 'Aguardando consulta',
+      source: 'Open-Meteo + RainViewer',
+      updatedAt: null
+    },
+    roads: {
+      pois: [],
+      userIncidents: JSON.parse(localStorage.getItem('alerta_gps_incidents') || '[]'),
+      status: 'Aguardando consulta de pontos na área',
+      source: 'OpenStreetMap (Overpass API) + Registro do Usuário',
+      updatedAt: null
+    },
+    transport: {
+      items: JSON.parse(localStorage.getItem('alerta_gps_transport') || '[]'),
+      status: 'Sem feed oficial em tempo real conectado (use importação/JSON ou fonte autorizada)',
+      source: 'SPTrans / CPTM / Metrô / EMTU / ANAC-CGNA (Feed Externo)',
+      updatedAt: null
+    },
+    telecom: {
+      sites: JSON.parse(localStorage.getItem('alerta_gps_telecom') || '[]'),
+      connectionInfo: navigator.connection ? {
+        effectiveType: navigator.connection.effectiveType || 'N/D',
+        downlink: navigator.connection.downlink ?? null,
+        rtt: navigator.connection.rtt ?? null
+      } : null,
+      status: 'Aguardando importação KML/GeoJSON/JSON ou seleção no Mapa OMRSP',
+      source: 'Mapa OMRSP / Arquivos Importados + Network Information API',
+      updatedAt: null
+    },
+    energy: {
+      outages: JSON.parse(localStorage.getItem('alerta_gps_energy') || '[]'),
+      status: 'Sem API pública direta de interrupções CPFL conectada nesta sessão',
+      source: 'Concessionária de Energia (CPFL / Feed Autorizado)',
+      updatedAt: null
+    },
+    history: JSON.parse(localStorage.getItem('alerta_gps_history') || '[]'),
+    favorites: JSON.parse(localStorage.getItem('alerta_gps_favorites') || '[]')
+  };
+
+  function nowTime() {
+    return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function persistLocal() {
+    localStorage.setItem('alerta_gps_incidents', JSON.stringify(state.roads.userIncidents));
+    localStorage.setItem('alerta_gps_transport', JSON.stringify(state.transport.items));
+    localStorage.setItem('alerta_gps_telecom', JSON.stringify(state.telecom.sites));
+    localStorage.setItem('alerta_gps_energy', JSON.stringify(state.energy.outages));
+    localStorage.setItem('alerta_gps_history', JSON.stringify(state.history.slice(0, 20)));
+    localStorage.setItem('alerta_gps_favorites', JSON.stringify(state.favorites.slice(0, 20)));
+  }
+
+  function triggerSmartAlert(title, body, source) {
+    if (!state.settings.alertsEnabled) return;
+    const toast = document.getElementById('alertToast');
+    document.getElementById('alertToastTitle').textContent = title;
+    document.getElementById('alertToastBody').textContent = body;
+    document.getElementById('alertToastMeta').textContent = `Fonte: ${source} • Atualizado às ${nowTime()}`;
+    toast.classList.add('visible');
+
+    if (state.settings.voiceEnabled && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(`${title}. ${body}`);
+      utter.lang = 'pt-BR';
+      window.speechSynthesis.speak(utter);
+    }
+  }
+
+  document.getElementById('btnDismissAlert').onclick = () => {
+    document.getElementById('alertToast').classList.remove('visible');
+  };
+
+  // =========================================================================
+  // MAPLIBRE GL JS + MARCADORES OMRSP
+  // =========================================================================
+  const STYLE_VECTOR = {
+    version: 8,
+    sources: {
+      osm: {
+        type: 'raster',
+        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+        tileSize: 256,
+        attribution: '© OpenStreetMap contributors'
+      }
+    },
+    layers: [{ id: 'osm-layer', type: 'raster', source: 'osm' }]
+  };
+
+  const STYLE_SATELLITE = {
+    version: 8,
+    sources: {
+      esri: {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        attribution: '© Esri World Imagery'
+      }
+    },
+    layers: [{ id: 'esri-layer', type: 'raster', source: 'esri' }]
+  };
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: STYLE_VECTOR,
+    center: [-49.948, -22.215],
+    zoom: 12,
+    pitch: 52,
+    bearing: -15
+  });
+
+  let userMarker = null;
+  let destMarker = null;
+  let omrspMarkers = [];
+
+  function applyMapMode(mode) {
+    state.mapMode = mode;
+    document.getElementById('mode3dBtn').classList.toggle('active', mode === '3d');
+    document.getElementById('modeSatBtn').classList.toggle('active', mode === 'satellite');
+    document.getElementById('modeNightBtn').classList.toggle('active', mode === 'night');
+
+    const targetStyle = mode === 'satellite' ? STYLE_SATELLITE : STYLE_VECTOR;
+    map.setStyle(targetStyle);
+    map.once('styledata', () => {
+      map.getCanvas().style.filter = mode === 'night'
+        ? 'invert(0.92) hue-rotate(185deg) saturate(1.25) brightness(0.88)'
+        : 'none';
+      map.setPitch(mode === '3d' ? 55 : 25);
+      redrawRouteOnMap();
+      redrawMarkersOnMap();
+    });
+  }
+
+  document.getElementById('mode3dBtn').onclick = () => applyMapMode('3d');
+  document.getElementById('modeSatBtn').onclick = () => applyMapMode('satellite');
+  document.getElementById('modeNightBtn').onclick = () => applyMapMode('night');
+
+  document.getElementById('btnTilt').onclick = () => {
+    const nextPitch = map.getPitch() > 35 ? 0 : 58;
+    map.easeTo({ pitch: nextPitch, duration: 500 });
+  };
+
+  document.getElementById('btnCenter').onclick = () => {
+    if (state.gps.coords) {
+      map.flyTo({
+        center: [state.gps.coords.lng, state.gps.coords.lat],
+        zoom: 15,
+        pitch: state.mapMode === '3d' ? 55 : 0
+      });
+    } else {
+      requestRealGps(true);
+    }
+  };
+
+  document.getElementById('btnClearRoute').onclick = () => {
+    state.route.destination = null;
+    state.route.distanceKm = null;
+    state.route.durationMin = null;
+    state.route.geometry = null;
+    state.route.steps = [];
+    state.route.status = 'Rota limpa';
+    if (destMarker) { destMarker.remove(); destMarker = null; }
+    if (map.getLayer('route-line')) map.removeLayer('route-line');
+    if (map.getSource('route-src')) map.removeSource('route-src');
+    renderDrawer();
+  };
+
+  function redrawRouteOnMap() {
+    if (!state.route.geometry) return;
+    if (map.getSource('route-src')) {
+      map.getSource('route-src').setData({ type: 'Feature', geometry: state.route.geometry });
+    } else {
+      map.addSource('route-src', {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: state.route.geometry }
+      });
+      map.addLayer({
+        id: 'route-line',
+        type: 'line',
+        source: 'route-src',
+        paint: { 'line-color': '#38bdf8', 'line-width': 6, 'line-opacity': 0.9 }
+      });
+    }
+  }
+
+  function redrawMarkersOnMap() {
+    if (state.gps.coords) {
+      if (!userMarker) {
+        userMarker = new maplibregl.Marker({ color: '#10b981' })
+          .setLngLat([state.gps.coords.lng, state.gps.coords.lat])
+          .addTo(map);
+      } else {
+        userMarker.setLngLat([state.gps.coords.lng, state.gps.coords.lat]);
+      }
+    }
+    if (state.route.destination) {
+      if (!destMarker) {
+        destMarker = new maplibregl.Marker({ color: '#a855f7' })
+          .setLngLat([state.route.destination.lng, state.route.destination.lat])
+          .addTo(map);
+      } else {
+        destMarker.setLngLat([state.route.destination.lng, state.route.destination.lat]);
+      }
+    }
+
+    omrspMarkers.forEach(m => m.remove());
+    omrspMarkers = [];
+    state.telecom.sites.forEach(site => {
+      if (typeof site.lat === 'number' && typeof site.lng === 'number') {
+        const marker = new maplibregl.Marker({ color: '#f59e0b' })
+          .setLngLat([site.lng, site.lat])
+          .setPopup(new maplibregl.Popup().setHTML(`<b>${site.code || site.name}</b><br/>Fonte: ${site.source || 'OMRSP / Local'}`))
+          .addTo(map);
+        omrspMarkers.push(marker);
+      }
+    });
+  }
+
+  // =========================================================================
+  // GPS REAL, BUSCA (SITES OMRSP + NOMINATIM) & ROTA (OSRM)
+  // =========================================================================
+  function requestRealGps(flyToUser = false) {
+    if (!('geolocation' in navigator)) {
+      state.gps.status = 'Geolocalização não suportada neste navegador';
+      state.gps.error = 'navigator.geolocation indisponível';
+      renderDrawer();
+      return;
+    }
+
+    state.gps.status = 'Consultando sinal GPS...';
+    renderDrawer();
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        state.gps.coords = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          speedMs: pos.coords.speed,
+          heading: pos.coords.heading
+        };
+        state.gps.status = 'Posição GPS obtida';
+        state.gps.error = null;
+        state.gps.updatedAt = nowTime();
+        redrawMarkersOnMap();
+
+        if (flyToUser || state.settings.followGps) {
+          map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 14 });
+        }
+        fetchWeather(pos.coords.latitude, pos.coords.longitude);
+        fetchNearbyPois(pos.coords.latitude, pos.coords.longitude);
+        renderDrawer();
+      },
+      (err) => {
+        state.gps.status = `GPS indisponível (${err.message || 'permissão negada/timeout'})`;
+        state.gps.error = err.message;
+        state.gps.updatedAt = nowTime();
+        renderDrawer();
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 5000 }
+    );
+  }
+
+  const searchInput = document.getElementById('searchInput');
+  const searchResults = document.getElementById('searchResults');
+
+  async function performSearch(query) {
+    const q = query.trim();
+    if (!q) {
+      searchResults.classList.remove('open');
+      return;
+    }
+
+    const items = [];
+
+    // 1. Sites OMRSP importados / cadastrados com coordenadas reais
+    state.telecom.sites
+      .filter(s => (s.code || s.name || '').toLowerCase().includes(q.toLowerCase()))
+      .forEach(s => {
+        if (typeof s.lat === 'number' && typeof s.lng === 'number') {
+          items.push({
+            title: `📡 Site OMRSP: ${s.code || s.name}`,
+            subtitle: `${s.name || ''} • Fonte: ${s.source || 'Mapa OMRSP / Local'}`,
+            lat: s.lat,
+            lng: s.lng,
+            source: s.source || 'Mapa OMRSP / Local'
+          });
+        }
+      });
+
+    // 2. Busca geográfica real via Nominatim
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&countrycodes=br&limit=5&q=${encodeURIComponent(q)}`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } });
+      if (res.ok) {
+        const data = await res.json();
+        data.forEach(d => {
+          items.push({
+            title: d.display_name.split(',').slice(0, 3).join(', '),
+            subtitle: `${d.display_name} • Fonte: Nominatim / OpenStreetMap`,
+            lat: parseFloat(d.lat),
+            lng: parseFloat(d.lon),
+            source: 'Nominatim (OpenStreetMap)'
+          });
+        });
+      }
+    } catch (_) {}
+
+    if (!items.length) {
+      searchResults.innerHTML = `<div class="search-item"><strong>Nenhum local/site encontrado</strong><small>Se for uma sigla do Mapa OMRSP sem coordenada salva, abra a aba OMRSP ou importe o KML</small></div>`;
+    } else {
+      searchResults.innerHTML = items.map((it, idx) => `
+        <div class="search-item" data-idx="${idx}">
+          <strong>${it.title}</strong>
+          <small>${it.subtitle}</small>
+        </div>
+      `).join('');
+
+      searchResults.querySelectorAll('.search-item').forEach((el, i) => {
+        el.onclick = () => {
+          const chosen = items[i];
+          searchInput.value = chosen.title;
+          searchResults.classList.remove('open');
+          calculateRealRoute(chosen);
+        };
+      });
+    }
+    searchResults.classList.add('open');
+  }
+
+  let searchTimer = null;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => performSearch(searchInput.value), 350);
+  });
+  document.getElementById('btnSearch').onclick = () => performSearch(searchInput.value);
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-box')) searchResults.classList.remove('open');
+  });
+
+  async function calculateRealRoute(dest) {
+    const origin = state.gps.coords
+      ? [state.gps.coords.lng, state.gps.coords.lat]
+      : [map.getCenter().lng, map.getCenter().lat];
+
+    state.route.destination = dest;
+    state.route.status = 'Calculando rota via OSRM...';
+    state.route.updatedAt = nowTime();
+    redrawMarkersOnMap();
+    renderDrawer();
+
+    const url = `https://router.project-osrm.org/route/v1/driving/${origin[0]},${origin[1]};${dest.lng},${dest.lat}?overview=full&geometries=geojson&steps=true`;
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const routeObj = json.routes && json.routes[0];
+      if (!routeObj) throw new Error('Nenhuma rota retornada pelo OSRM');
+
+      state.route.distanceKm = +(routeObj.distance / 1000).toFixed(2);
+      state.route.durationMin = Math.max(1, Math.round(routeObj.duration / 60));
+      state.route.geometry = routeObj.geometry;
+      state.route.steps = (routeObj.legs[0]?.steps || [])
+        .map(s => s.maneuver?.instruction)
+        .filter(Boolean)
+        .slice(0, 6);
+      state.route.status = 'Rota calculada';
+      state.route.updatedAt = nowTime();
+
+      redrawRouteOnMap();
+      const bounds = new maplibregl.LngLatBounds();
+      bounds.extend(origin);
+      bounds.extend([dest.lng, dest.lat]);
+      map.fitBounds(bounds, { padding: 80 });
+
+      state.history.unshift({ name: dest.title, distKm: state.route.distanceKm, time: nowTime() });
+      persistLocal();
+      fetchWeather(dest.lat, dest.lng);
+      renderDrawer();
+    } catch (err) {
+      state.route.status = `Falha ao obter rota OSRM (${err.message})`;
+      state.route.updatedAt = nowTime();
+      renderDrawer();
+    }
+  }
+
+  // =========================================================================
+  // CLIMA (OPEN-METEO + RAINVIEWER) E OVERPASS (OSM)
+  // =========================================================================
+  function applyWeatherAnimation(code, windSpeed) {
+    const fx = document.getElementById('weatherFx');
+    fx.className = 'weather-fx';
+    if (code >= 95) fx.classList.add('storm');
+    else if (code >= 51 && code <= 82) fx.classList.add('rain');
+    else if (code === 45 || code === 48) fx.classList.add('fog');
+
+    if (windSpeed >= 50) {
+      triggerSmartAlert(
+        'Alerta de Ventos Fortes',
+        `Vento de ${windSpeed} km/h registrado pela Open-Meteo na região consultada.`,
+        'Open-Meteo'
+      );
+    }
+  }
+
+  async function fetchWeather(lat, lng) {
+    state.weather.status = 'Consultando Open-Meteo...';
+    try {
+      const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,rain&hourly=temperature_2m,precipitation_probability,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=America/Sao_Paulo`;
+      const res = await fetch(omUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      state.weather.current = data.current || null;
+      state.weather.hourly = (data.hourly?.time || []).slice(0, 6).map((t, i) => ({
+        time: t.slice(11, 16),
+        temp: data.hourly.temperature_2m?.[i],
+        pop: data.hourly.precipitation_probability?.[i]
+      }));
+      state.weather.daily = (data.daily?.time || []).slice(0, 3).map((d, i) => ({
+        day: d,
+        max: data.daily.temperature_2m_max?.[i],
+        min: data.daily.temperature_2m_min?.[i],
+        pop: data.daily.precipitation_probability_max?.[i]
+      }));
+      state.weather.status = 'Dados meteorológicos atualizados';
+      state.weather.updatedAt = nowTime();
+
+      if (data.current) {
+        applyWeatherAnimation(data.current.weather_code, data.current.wind_speed_10m || 0);
+      }
+
+      try {
+        const rvRes = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+        if (rvRes.ok) {
+          const rv = await rvRes.json();
+          const frames = rv.radar?.past || [];
+          if (frames.length) {
+            state.weather.radarAvailable = true;
+            const latest = frames[frames.length - 1];
+            const tileUrl = `${rv.host}${latest.path}/256/{z}/{x}/{y}/2/1_1.png`;
+            if (map.getSource('rainviewer-src')) {
+              map.getSource('rainviewer-src').setTiles([tileUrl]);
+            } else {
+              map.addSource('rainviewer-src', { type: 'raster', tiles: [tileUrl], tileSize: 256 });
+              map.addLayer({ id: 'rainviewer-layer', type: 'raster', source: 'rainviewer-src', paint: { 'raster-opacity': 0.48 } });
+            }
+          }
+        }
+      } catch (_) {
+        state.weather.radarAvailable = false;
+      }
+    } catch (err) {
+      state.weather.status = `Clima indisponível (${err.message})`;
+      state.weather.updatedAt = nowTime();
+    }
+    renderDrawer();
+  }
+
+  async function fetchNearbyPois(lat, lng) {
+    state.roads.status = 'Consultando pontos no OpenStreetMap...';
+    const query = `[out:json][timeout:12];(node["amenity"~"fuel|hospital|pharmacy|restaurant|charging_station"](around:5000,${lat},${lng});node["highway"="motorway_junction"](around:8000,${lat},${lng}););out center 15;`;
+    try {
+      const res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      state.roads.pois = (json.elements || []).map(el => ({
+        name: el.tags?.name || el.tags?.amenity || 'Ponto viário',
+        type: el.tags?.amenity || el.tags?.highway || 'POI',
+        lat: el.lat,
+        lng: el.lon
+      }));
+      state.roads.status = `${state.roads.pois.length} pontos OSM encontrados`;
+      state.roads.updatedAt = nowTime();
+    } catch (err) {
+      state.roads.status = `Consulta OSM indisponível (${err.message})`;
+      state.roads.updatedAt = nowTime();
+    }
+    renderDrawer();
+  }
+
+  // =========================================================================
+  // IMPORTAÇÃO DE ARQUIVOS / JSON LOCAL (KML / GEOJSON / JSON)
+  // =========================================================================
+  function ingestSitesList(list, sourceLabel) {
+    state.telecom.sites = list;
+    state.telecom.status = `${list.length} pontos carregados (${sourceLabel})`;
+    state.telecom.updatedAt = nowTime();
+    state.omrsp.updatedAt = nowTime();
+    persistLocal();
+    redrawMarkersOnMap();
+    renderDrawer();
+  }
+
+  document.getElementById('btnApplyJson').onclick = () => {
+    const raw = document.getElementById('jsonPasteInput').value.trim();
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const mapped = parsed.map(item => ({
+          ...item,
+          source: item.source || 'Importação JSON do Usuário'
+        }));
+        ingestSitesList(mapped, 'JSON Manual');
+        alert('Dados salvos com sucesso.');
+      }
+    } catch (e) {
+      alert('JSON inválido: ' + e.message);
+    }
+  };
+
+  document.getElementById('fileImportInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target.result;
+      if (file.name.toLowerCase().endsWith('.kml')) {
+        const xml = new DOMParser().parseFromString(text, 'text/xml');
+        const pms = Array.from(xml.getElementsByTagName('Placemark'));
+        const imported = [];
+        pms.forEach(pm => {
+          const name = pm.getElementsByTagName('name')[0]?.textContent?.trim() || 'Ponto KML';
+          const coords = pm.getElementsByTagName('coordinates')[0]?.textContent?.trim().split(',');
+          if (coords && coords.length >= 2) {
+            const lng = parseFloat(coords[0]);
+            const lat = parseFloat(coords[1]);
+            if (!isNaN(lat) && !isNaN(lng)) {
+              imported.push({
+                code: name.split(/[\s\-_]+/)[0].toUpperCase(),
+                name,
+                lat,
+                lng,
+                source: `OMRSP / KML (${file.name})`
+              });
+            }
+          }
+        });
+        ingestSitesList(imported, file.name);
+      } else {
+        try {
+          const data = JSON.parse(text);
+          const list = Array.isArray(data) ? data : (data.features || []);
+          ingestSitesList(list, file.name);
+        } catch (err) {
+          alert('Erro ao ler arquivo: ' + err.message);
+        }
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // =========================================================================
+  // ASSISTENTE IA DE ROTA
+  // =========================================================================
+  function buildAiAnalysis() {
+    const lines = [];
+    if (state.route.destination) {
+      lines.push(`Rota ativa para <b>${state.route.destination.title}</b> (${state.route.distanceKm ?? 'N/D'} km, ~${state.route.durationMin ?? 'N/D'} min via OSRM).`);
+    } else {
+      lines.push('Nenhuma rota ativa no momento. Pesquise um destino, endereço ou site OMRSP na barra superior.');
+    }
+    if (state.weather.current) {
+      lines.push(`Clima atual (${state.weather.source}): <b>${state.weather.current.temperature_2m}°C</b>, vento de <b>${state.weather.current.wind_speed_10m} km/h</b> e chuva registrada de <b>${state.weather.current.rain} mm</b>.`);
+    } else {
+      lines.push('Dados meteorológicos ainda não carregados para a posição atual.');
+    }
+    lines.push(`Mapa OMRSP vinculado (ID: <code>${state.omrsp.mid}</code>) com <b>${state.telecom.sites.length}</b> sites com coordenadas carregados no mapa.`);
+    lines.push(`Ocorrências registradas pelo usuário na sessão: <b>${state.roads.userIncidents.length}</b>.`);
+    return lines.join('<br/>• ');
+  }
+
+  // =========================================================================
+  // RENDERIZAÇÃO DO PAINEL POR MÓDULO
+  // =========================================================================
+  function renderDrawer() {
+    const drawer = document.getElementById('drawer');
+    const g = state.gps;
+    const r = state.route;
+
+    const speedText = (g.coords && typeof g.coords.speedMs === 'number' && !Number.isNaN(g.coords.speedMs))
+      ? `${Math.round(g.coords.speedMs * 3.6)} km/h`
+      : 'N/D (sem leitura do sensor)';
+
+    if (state.activeTab === 'gps') {
+      drawer.innerHTML = `
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">🧭 GPS & Navegação</span>
+            <span class="badge-status ${g.coords ? 'st-ok' : 'st-warn'}">${g.coords ? 'ATIVO' : 'AGUARDANDO'}</span>
+          </div>
+          <div><b>Status:</b> ${g.status}</div>
+          <div class="kv-grid">
+            <div class="kv"><span>Latitude / Longitude</span><strong>${g.coords ? `${g.coords.lat.toFixed(5)}, ${g.coords.lng.toFixed(5)}` : 'N/D'}</strong></div>
+            <div class="kv"><span>Velocidade Real</span><strong>${speedText}</strong></div>
+            <div class="kv"><span>Distância (OSRM)</span><strong>${r.distanceKm != null ? `${r.distanceKm} km` : 'N/D'}</strong></div>
+            <div class="kv"><span>Tempo Estimado</span><strong>${r.durationMin != null ? `${r.durationMin} min` : 'N/D'}</strong></div>
+          </div>
+          <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn-ghost" onclick="window.__setVehicle('driving')">🚗 Carro</button>
+            <button class="btn-ghost" onclick="window.__setVehicle('motorcycle')">🏍️ Moto</button>
+            <button class="btn-ghost" onclick="window.__setVehicle('truck')">🚛 Caminhão</button>
+            <button class="btn-ghost" onclick="window.__saveFav()">⭐ Favoritar</button>
+          </div>
+          <div class="meta-line">Fonte: ${g.source} / ${r.source} • Atualizado: ${g.updatedAt || r.updatedAt || 'Pendente'}</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Favoritos (${state.favorites.length}) & Histórico (${state.history.length})</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">
+            ${state.favorites.length ? state.favorites.map(f => `⭐ ${f.title}`).join('<br/>') : 'Nenhum favorito salvo.'}
+          </div>
+          <div style="font-size:11px;margin-top:6px">
+            ${state.history.length ? state.history.slice(0, 4).map(h => `• ${h.name} (${h.distKm ?? '?'} km) — ${h.time}`).join('<br/>') : 'Sem rotas anteriores registradas.'}
+          </div>
+        </div>
+      `;
+    } else if (state.activeTab === 'omrsp') {
+      drawer.innerHTML = `
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">🗺️ Mapa OMRSP</span>
+            <span class="badge-status st-ok">INTEGRADO</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted)">
+            Visualização vinculada ao Google My Maps OMRSP. Se o navegador bloquear o iframe por permissão do mapa, use o botão de abrir em nova aba.
+          </div>
+          <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+            <a class="btn-ghost" href="${state.omrsp.viewerUrl}" target="_blank" rel="noopener">↗ Abrir Mapa OMRSP</a>
+            <button class="btn-ghost" onclick="window.__toggleOmrspEmbed()">${state.omrsp.showEmbed ? 'Ocultar Frame' : 'Mostrar Frame'}</button>
+            <button class="btn-ghost" onclick="window.__openConfig()">📥 Importar KML/JSON</button>
+          </div>
+          ${state.omrsp.showEmbed ? `<iframe class="omrsp-frame" src="${state.omrsp.embedUrl}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>` : ''}
+          <div style="font-size:11px;margin-top:8px">
+            <b>Sites com coordenadas carregados (${state.telecom.sites.length}):</b><br/>
+            ${state.telecom.sites.length
+              ? state.telecom.sites.map(s => `• <b>${s.code || s.name}</b> (${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}) <button class="btn-ghost" style="padding:2px 6px;font-size:10px" onclick="window.__routeToSite('${s.code || s.name}', ${s.lat}, ${s.lng})">Rotear</button>`).join('<br/>')
+              : 'Nenhum site importado ainda. Importe o KML do OMRSP em Config para traçar rota direto para siglas como PMOR1.'}
+          </div>
+          <div class="meta-line">Fonte: ${state.omrsp.source} • Atualizado: ${state.omrsp.updatedAt || 'Sessão atual'}</div>
+        </div>
+      `;
+    } else if (state.activeTab === 'clima') {
+      const c = state.weather.current;
+      drawer.innerHTML = `
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">🌦️ Monitoramento Meteorológico</span>
+            <span class="badge-status ${c ? 'st-ok' : 'st-warn'}">${c ? 'ONLINE' : 'PENDENTE'}</span>
+          </div>
+          <div><b>Status:</b> ${state.weather.status}</div>
+          <div class="kv-grid">
+            <div class="kv"><span>Temperatura</span><strong>${c ? `${c.temperature_2m} °C` : 'N/D'}</strong></div>
+            <div class="kv"><span>Sensação</span><strong>${c ? `${c.apparent_temperature} °C` : 'N/D'}</strong></div>
+            <div class="kv"><span>Vento</span><strong>${c ? `${c.wind_speed_10m} km/h` : 'N/D'}</strong></div>
+            <div class="kv"><span>Radar RainViewer</span><strong>${state.weather.radarAvailable ? 'Camada ativa' : 'Indisponível'}</strong></div>
+          </div>
+          <div style="font-size:11px;margin-top:8px">
+            ${state.weather.hourly.length ? state.weather.hourly.map(h => `${h.time} — ${h.temp}°C (Chuva: ${h.pop ?? 0}%)`).join('<br/>') : 'Sem previsão horária carregada.'}
+          </div>
+          <div class="meta-line">Fonte: ${state.weather.source} • Atualizado: ${state.weather.updatedAt || 'Pendente'}</div>
+        </div>
+      `;
+    } else if (state.activeTab === 'rodovias') {
+      drawer.innerHTML = `
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">🛣️ Rodovias (SP) & Serviços</span>
+            <span class="badge-status st-ok">OSM / LOCAL</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px">
+            Corredores monitorados no escopo SP: ${SP_HIGHWAYS.slice(0, 5).join(', ')} e demais rodovias SP/BR.
+          </div>
+          <div style="font-size:11px"><b>Pontos próximos (Overpass):</b> ${state.roads.status}</div>
+          <div style="font-size:11px;margin-top:4px">
+            ${state.roads.pois.length ? state.roads.pois.slice(0, 5).map(p => `• ${p.name} (${p.type})`).join('<br/>') : 'Aguardando localização ou pontos OSM na área.'}
+          </div>
+          <div style="margin-top:8px;display:flex;gap:6px">
+            <input id="incidentInput" type="text" placeholder="Registrar ocorrência observada na via..." style="flex:1;background:#040814;color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px;font-size:11px" />
+            <button class="btn-neon" onclick="window.__addIncident()">Registrar</button>
+          </div>
+          <div style="font-size:11px;margin-top:6px">
+            ${state.roads.userIncidents.length ? state.roads.userIncidents.map(i => `⚠️ ${i.text} (${i.time})`).join('<br/>') : 'Nenhuma ocorrência manual registrada.'}
+          </div>
+          <div class="meta-line">Fonte: ${state.roads.source} • Atualizado: ${state.roads.updatedAt || 'Pendente'}</div>
+        </div>
+      `;
+    } else if (state.activeTab === 'transportes') {
+      drawer.innerHTML = `
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">🚆 Transportes & Mobilidade</span>
+            <span class="badge-status st-warn">FEED EXTERNO</span>
+          </div>
+          <div style="font-size:11px"><b>Status:</b> ${state.transport.status}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px">
+            Escopo: Metrô de São Paulo, CPTM, linhas concedidas, SPTrans, EMTU, terminais rodoviários e aeroportos.
+          </div>
+          <div class="meta-line">Fonte: ${state.transport.source} • Atualizado: ${state.transport.updatedAt || 'Sem feed ativo'}</div>
+        </div>
+      `;
+    } else if (state.activeTab === 'telefonia') {
+      const conn = state.telecom.connectionInfo;
+      drawer.innerHTML = `
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">📶 Telecomunicações & Sites</span>
+            <span class="badge-status ${state.telecom.sites.length ? 'st-ok' : 'st-warn'}">${state.telecom.sites.length ? `${state.telecom.sites.length} SITES` : 'BASE VAZIA'}</span>
+          </div>
+          <div style="font-size:11px"><b>Status:</b> ${state.telecom.status}</div>
+          <div style="font-size:11px;margin-top:4px">
+            <b>Aparelho (Network Info):</b> ${conn ? `Tipo ${conn.effectiveType} • Downlink ${conn.downlink ?? 'N/D'} Mbps • RTT ${conn.rtt ?? 'N/D'} ms` : 'Não exposto pelo navegador'}
+          </div>
+          <div class="meta-line">Fonte: ${state.telecom.source} • Atualizado: ${state.telecom.updatedAt || 'Pendente'}</div>
+        </div>
+      `;
+    } else if (state.activeTab === 'energia') {
+      drawer.innerHTML = `
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">⚡ Energia Elétrica (CPFL / Distribuidoras)</span>
+            <span class="badge-status st-off">SEM API DIRETA</span>
+          </div>
+          <div style="font-size:11px"><b>Status:</b> ${state.energy.status}</div>
+          <div class="meta-line">Fonte: ${state.energy.source} • Atualizado: ${state.energy.updatedAt || 'Indisponível'}</div>
+        </div>
+      `;
+    } else if (state.activeTab === 'ia') {
+      drawer.innerHTML = `
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">🤖 Assistente Inteligente de Rota</span>
+            <span class="badge-status st-ok">ANÁLISE</span>
+          </div>
+          <div style="font-size:12px;line-height:1.55">• ${buildAiAnalysis()}</div>
+          <div class="meta-line">Baseado exclusivamente no estado real carregado • Sem dados fictícios</div>
+        </div>
+      `;
+    }
+  }
+
+  window.__setVehicle = (mode) => {
+    state.vehicleMode = mode;
+    if (state.route.destination) calculateRealRoute(state.route.destination);
+    else renderDrawer();
+  };
+
+  window.__saveFav = () => {
+    if (!state.route.destination) return;
+    state.favorites.unshift(state.route.destination);
+    persistLocal();
+    renderDrawer();
+  };
+
+  window.__addIncident = () => {
+    const inp = document.getElementById('incidentInput');
+    if (!inp || !inp.value.trim()) return;
+    state.roads.userIncidents.unshift({ text: inp.value.trim(), time: nowTime() });
+    state.roads.updatedAt = nowTime();
+    persistLocal();
+    triggerSmartAlert('Ocorrência Registrada', inp.value.trim(), 'Registro do Usuário');
+    inp.value = '';
+    renderDrawer();
+  };
+
+  window.__toggleOmrspEmbed = () => {
+    state.omrsp.showEmbed = !state.omrsp.showEmbed;
+    renderDrawer();
+  };
+
+  window.__openConfig = () => {
+    document.getElementById('configModal').classList.add('open');
+  };
+
+  window.__routeToSite = (label, lat, lng) => {
+    calculateRealRoute({
+      title: `📡 Site OMRSP: ${label}`,
+      lat,
+      lng,
+      source: 'Mapa OMRSP / Local'
+    });
+  };
+
+  document.querySelectorAll('.nav-tab').forEach(btn => {
+    btn.onclick = () => {
+      const tab = btn.dataset.tab;
+      if (tab === 'config') {
+        window.__openConfig();
+        return;
+      }
+      document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.activeTab = tab;
+      renderDrawer();
+    };
+  });
+
+  document.getElementById('btnCloseModal').onclick = () => {
+    document.getElementById('configModal').classList.remove('open');
+  };
+  document.getElementById('cfgAlertsEnabled').onchange = (e) => { state.settings.alertsEnabled = e.target.checked; };
+  document.getElementById('cfgVoiceEnabled').onchange = (e) => { state.settings.voiceEnabled = e.target.checked; };
+  document.getElementById('cfgFollowGps').onchange = (e) => { state.settings.followGps = e.target.checked; };
+
+  map.on('load', () => {
+    requestRealGps(false);
+    fetchWeather(-22.215, -49.948);
+    fetchNearbyPois(-22.215, -49.948);
+    redrawMarkersOnMap();
+    renderDrawer();
+  });
+})();
+</script>
+</body>
+</html>
