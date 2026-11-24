@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>GPS Alerta 3.0 — Waze + Google Maps + Earth + OpenSignal + OMR Maps</title>
+<style>
+  :root {
+    --bg-dark: #070b14;
+    --panel-bg: rgba(12, 19, 34, 0.88);
+    --panel-border: rgba(56, 189, 248, 0.25);
+    --accent-cyan: #38bdf8;
+    --accent-blue: #3b82f6;
+    --accent-green: #10b981;
+    --accent-amber: #f59e0b;
+    --accent-red: #ef4444;
+    --accent-purple: #a855f7;
+    --text-main: #f1f5f9;
+    --text-muted: #94a3b8;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Roboto, Inter, system-ui, -apple-system, sans-serif;
+    user-select: none;
+  }
+
+  body {
+    background: var(--bg-dark);
+    color: var(--text-main);
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* CANVAS 3D FULLSCREEN */
+  #mapCanvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    cursor: grab;
+  }
+  #mapCanvas:active {
+    cursor: grabbing;
+  }
+
+  /* TOP BAR & OMR SEARCH */
+  .top-hud {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    z-index: 20;
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+    pointer-events: none;
+  }
+
+  .top-hud > * {
+    pointer-events: auto;
+  }
+
+  .nav-turn-card {
+    background: linear-gradient(135deg, rgba(14, 116, 144, 0.94), rgba(15, 23, 42, 0.94));
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    border-radius: 16px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    min-width: 280px;
+  }
+
+  .turn-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    background: rgba(56, 189, 248, 0.2);
+    border: 1px solid rgba(56, 189, 248, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    flex-shrink: 0;
+  }
+
+  .turn-info h2 {
+    font-size: 18px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: -0.3px;
+  }
+
+  .turn-info p {
+    font-size: 12px;
+    color: #bae6fd;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+  }
+
+  /* SEARCH BOX OMR / ENDEREÇO */
+  .search-omr-box {
+    flex: 1;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 8px 14px;
+    backdrop-filter: blur(14px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+  }
+
+  .search-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .omr-badge {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #000;
+    font-weight: 800;
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+  }
+
+  .search-input {
+    flex: 1;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .search-input:focus {
+    border-color: var(--accent-cyan);
+    background: rgba(56, 189, 248, 0.08);
+  }
+
+  .btn-go-site {
+    background: linear-gradient(135deg, #0284c7, #2563eb);
+    border: none;
+    color: #fff;
+    font-weight: 700;
+    font-size: 12px;
+    padding: 9px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform 0.15s, filter 0.15s;
+  }
+
+  .btn-go-site:hover {
+    filter: brightness(1.15);
+  }
+
+  .btn-go-site:active {
+    transform: scale(0.97);
+  }
+
+  .search-autocomplete {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: rgba(10, 16, 30, 0.97);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: 14px;
+    max-height: 260px;
+    overflow-y: auto;
+    display: none;
+    z-index: 50;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.75);
+  }
+
+  .search-autocomplete.active {
+    display: block;
+  }
+
+  .auto-item {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .auto-item:hover {
+    background: rgba(56, 189, 248, 0.14);
+  }
+
+  .auto-item strong {
+    color: #fbbf24;
+    font-size: 13px;
+  }
+
+  .auto-item span {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: block;
+  }
+
+  /* MODE SWITCHER */
+  .map-modes {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 6px;
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    backdrop-filter: blur(12px);
+  }
+
+  .mode-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .mode-btn.active {
+    background: rgba(56, 189, 248, 0.22);
+    color: #fff;
+    border: 1px solid rgba(56, 189, 248, 0.45);
+  }
+
+  /* ALERT BANNER FLUTUANTE */
+  .live-alert-banner {
+    position: fixed;
+    top: 84px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 25;
+    background: linear-gradient(90deg, rgba(185, 28, 28, 0.95), rgba(217, 119, 6, 0.95));
+    border: 1px solid rgba(254, 202, 202, 0.5);
+    padding: 10px 20px;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 10px 30px rgba(220, 38, 38, 0.45);
+    animation: pulseAlert 2s infinite;
+    max-width: 92vw;
+  }
+
+  @keyframes pulseAlert {
+    0%, 100% { box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4); }
+    50% { box-shadow: 0 8px 34px rgba(245, 158, 11, 0.75); }
+  }
+
+  .live-alert-banner .badge-src {
+    background: rgba(0,0,0,0.45);
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+  }
+
+  /* RIGHT DRAWER / TELEMETRY PANEL */
+  .side-panel {
+    position: fixed;
+    top: 136px;
+    right: 12px;
+    bottom: 92px;
+    width: 340px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 18px;
+    backdrop-filter: blur(16px);
+    z-index: 18;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+    transition: transform 0.3s ease;
+  }
+
+  .side-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    background: rgba(0,0,0,0.35);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 11px 4px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+
+  .tab-btn.active {
+    color: var(--accent-cyan);
+    border-bottom-color: var(--accent-cyan);
+    background: rgba(56, 189, 248, 0.08);
+  }
+
+  .tab-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .tab-content.active {
+    display: flex;
+  }
+
+  .card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+
+  .card-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* SIGNAL BARS */
+  .carrier-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    font-size: 12px;
+  }
+
+  .carrier-row:last-child { border-bottom: none; }
+
+  .signal-pill {
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .sig-good { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+  .sig-mid { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+  .sig-low { background: rgba(239, 68, 68, 0.25); color: #f87171; }
+
+  /* SITE TARGET CARD */
+  .omr-target-box {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(30, 41, 59, 0.7));
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    border-radius: 12px;
+    padding: 10px;
+  }
+
+  .omr-links-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+
+  .mini-link {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    text-decoration: none;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 9px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.12);
+    cursor: pointer;
+  }
+
+  .mini-link:hover {
+    background: rgba(56, 189, 248, 0.25);
+  }
+
+  /* BOTTOM HUD BAR */
+  .bottom-hud {
+    position: fixed;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    pointer-events: none;
+  }
+
+  .bottom-hud > * {
+    pointer-events: auto;
+  }
+
+  .speedometer-cluster {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    padding: 8px 16px;
+    border-radius: 20px;
+    backdrop-filter: blur(14px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+  }
+
+  .speed-box {
+    text-align: center;
+    min-width: 64px;
+  }
+
+  .speed-val {
+    font-size: 28px;
+    font-weight: 900;
+    line-height: 1;
+    color: #fff;
+  }
+
+  .speed-unit {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 700;
+  }
+
+  .speed-limit-sign {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: #fff;
+    border: 5px solid #dc2626;
+    color: #111;
+    font-weight: 900;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+
+  .trip-summary {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    padding: 10px 18px;
+    border-radius: 20px;
+    backdrop-filter: blur(14px);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+  }
+
+  .trip-stat {
+    text-align: center;
+  }
+
+  .trip-stat strong {
+    font-size: 16px;
+    color: #fff;
+    display: block;
+  }
+
+  .trip-stat span {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .action-buttons {
+    display: flex;
+    gap: 8px;
+  }
+
+  .hud-btn {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    color: #fff;
+    padding: 12px 16px;
+    border-radius: 16px;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: transform 0.15s, background 0.15s;
+  }
+
+  .hud-btn:hover {
+    background: rgba(56, 189, 248, 0.22);
+  }
+
+  .hud-btn.report {
+    background: linear-gradient(135deg, #f59e0b, #ea580c);
+    border: none;
+    color: #fff;
+  }
+
+  /* MODAL REPORT & KML IMPORT */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 6, 23, 0.78);
+    backdrop-filter: blur(6px);
+    z-index: 60;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .modal-backdrop.open {
+    display: flex;
+  }
+
+  .modal-card {
+    background: #0f172a;
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: 20px;
+    width: 100%;
+    max-width: 460px;
+    padding: 20px;
+    box-shadow: 0 25px 60px rgba(0,0,0,0.8);
+  }
+
+  .report-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin: 14px 0;
+  }
+
+  .report-option {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    padding: 14px 8px;
+    text-align: center;
+    cursor: pointer;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .report-option:hover {
+    background: rgba(56, 189, 248, 0.2);
+    border-color: var(--accent-cyan);
+  }
+
+  .report-option div {
+    font-size: 24px;
+    margin-bottom: 4px;
+  }
+
+  @media (max-width: 920px) {
+    .top-hud { flex-wrap: wrap; }
+    .nav-turn-card { min-width: 100%; }
+    .side-panel {
+      top: auto;
+      bottom: 84px;
+      left: 12px;
+      right: 12px;
+      width: auto;
+      height: 230px;
+    }
+    .trip-summary { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="mapCanvas"></canvas>
+
+<!-- TOP HUD -->
+<div class="top-hud">
+  <div class="nav-turn-card">
+    <div class="turn-icon" id="turnIcon">⬆️</div>
+    <div class="turn-info">
+      <h2 id="turnDist">Siga 1,4 km</h2>
+      <p id="turnStreet">Rod. Pres. Dutra / Corredor Brasil 3D</p>
+    </div>
+  </div>
+
+  <!-- BUSCA OMR MAPS + ENDEREÇO -->
+  <div class="search-omr-box">
+    <div class="search-row">
+      <span class="omr-badge">📡 OMR MAPS</span>
+      <input
+        type="text"
+        id="omrSearchInput"
+        class="search-input"
+        placeholder="Digite sigla do site (ex: PMOR1, SIPMOR1, SIMIADTC, SIOIN01) ou endereço..."
+        autocomplete="off"
+      />
+      <button class="btn-go-site" id="btnGoSite">Ir para Site</button>
+    </div>
+    <div class="search-autocomplete" id="searchAutocomplete"></div>
+  </div>
+
+  <!-- MODOS DO MAPA -->
+  <div class="map-modes">
+    <button class="mode-btn active" data-mode="nav3d">🧭 Nav 3D</button>
+    <button class="mode-btn" data-mode="earth">🛰️ Google Earth</button>
+    <button class="mode-btn" data-mode="night">🌙 HUD Noturno</button>
+  </div>
+</div>
+
+<!-- ALERTA AO VIVO -->
+<div class="live-alert-banner" id="liveAlertBanner">
+  <span style="font-size:20px" id="alertEmoji">📸</span>
+  <div>
+    <div style="font-weight:800;font-size:13px" id="alertTitle">Radar Fixo 110 km/h a 450 m</div>
+    <div style="font-size:11px;opacity:0.9" id="alertSub">Sincronizado: Waze + Google Maps + PRF Brasil</div>
+  </div>
+  <span class="badge-src" id="alertSrc">WAZE + MAPS</span>
+</div>
+
+<!-- PAINEL LATERAL -->
+<aside class="side-panel">
+  <div class="side-tabs">
+    <button class="tab-btn active" data-tab="omr">📡 OMR Sites</button>
+    <button class="tab-btn" data-tab="alerts">🚨 Alertas</button>
+    <button class="tab-btn" data-tab="signal">📶 OpenSignal</button>
+    <button class="tab-btn" data-tab="places">⛽ Locais 3D</button>
+  </div>
+
+  <!-- ABA 1: OMR SITES -->
+  <div class="tab-content active" id="tab-omr">
+    <div class="omr-target-box" id="activeSiteCard">
+      <div class="card-title">
+        <span>🎯 DESTINO OMR SELECIONADO</span>
+        <span style="color:#fbbf24;font-weight:800" id="targetSiteCode">PMOR1</span>
+      </div>
+      <div style="font-size:13px;font-weight:700;color:#fff" id="targetSiteName">Site PMOR1 — Base Operacional / Torre</div>
+      <div style="font-size:11px;color:#cbd5e1;margin-top:3px" id="targetSiteMeta">Detentora: SBA Torres • Lat: -22.2148, Lng: -49.9462</div>
+      <div class="omr-links-row">
+        <a class="mini-link" id="linkOpenOmrMap" href="https://www.google.com/maps/d/viewer?mid=1MNogDuJ0kYtkUUoZ4l_cnGOx4VGYNqY" target="_blank" rel="noopener">🗺️ Abrir OMR Map</a>
+        <a class="mini-link" id="linkOpenGmaps" href="https://www.google.com/maps/search/?api=1&query=-22.2148,-49.9462" target="_blank" rel="noopener">📍 Google Maps</a>
+        <a class="mini-link" id="linkOpenWaze" href="https://waze.com/ul?ll=-22.2148,-49.9462&navigate=yes" target="_blank" rel="noopener">🚗 Waze</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>📂 BASE OMR (Importar KML / CSV)</span>
+        <button class="mini-link" id="btnOpenImport" style="padding:2px 7px">+ Importar</button>
+      </div>
+      <p style="font-size:11px;color:var(--text-muted);line-height:1.4">
+        Busque por qualquer sigla (ex: <b>PMOR1</b>, <b>SIPMOR1</b>, <b>SIMIADTC</b>, <b>SIOIN01</b>) ou importe o arquivo <b>.KML</b> exportado do seu Google My Maps para salvar todas as siglas offline.
+      </p>
+    </div>
+
+    <div id="omrSiteList" style="display:flex;flex-direction:column;gap:6px"></div>
+  </div>
+
+  <!-- ABA 2: ALERTAS WAZE / GOOGLE MAPS / PRF -->
+  <div class="tab-content" id="tab-alerts">
+    <div class="card">
+      <div class="card-title"><span>🛣️ PEDÁGIOS NA ROTA</span><strong style="color:#38bdf8" id="tollTotal">Total: R$ 27,40</strong></div>
+      <div style="font-size:12px;line-height:1.6">
+        • Praça Km 182 (CCR): <b>R$ 13,70</b><br/>
+        • Praça Km 245 (Ecovias): <b>R$ 13,70</b>
+      </div>
+    </div>
+    <div id="alertsFeedList" style="display:flex;flex-direction:column;gap:6px"></div>
+  </div>
+
+  <!-- ABA 3: OPENSIGNAL & TORRES -->
+  <div class="tab-content" id="tab-signal">
+    <div class="card" style="border-color:rgba(245,158,11,0.4)">
+      <div class="card-title"><span>⚠️ ALERTA OPENSIGNAL</span><span style="color:#fbbf24">ZONA DE SOMBRA A 2,1 KM</span></div>
+      <p style="font-size:11px;color:#e2e8f0">Queda prevista para <b>-114 dBm</b> no trecho de serra/vale. Mapa 3D e siglas OMR já estão em cache offline.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>📶 COBERTURA EM TEMPO REAL</span><span>5G / 4G LTE</span></div>
+      <div class="carrier-row"><span><b>Vivo</b> (ERB #4412)</span><span class="signal-pill sig-good">-82 dBm • 5G</span></div>
+      <div class="carrier-row"><span><b>TIM</b> (ERB #1098)</span><span class="signal-pill sig-good">-86 dBm • 5G</span></div>
+      <div class="carrier-row"><span><b>Claro</b> (ERB #7721)</span><span class="signal-pill sig-mid">-99 dBm • 4G+</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>🗼 ANTENAS & TORRES PRÓXIMAS</span></div>
+      <div style="font-size:11px;color:#cbd5e1;line-height:1.6">
+        • <b>SBA Torres</b> — 380 m (Torre Autoportante 45m)<br/>
+        • <b>Torres Brasil</b> — 920 m (Monoposte Multisserviço)<br/>
+        • <b>American Tower</b> — 1,4 km (Site Compartilhado TIM/Vivo)<br/>
+        • <b>IHS Towers</b> — 2,3 km (Hub Fibra + Rádio)
+      </div>
+    </div>
+  </div>
+
+  <!-- ABA 4: LOCAIS 3D -->
+  <div class="tab-content" id="tab-places">
+    <div class="card">
+      <div class="card-title"><span>⛽ POSTOS DE COMBUSTÍVEL NA VIA</span></div>
+      <div style="font-size:12px;line-height:1.6">
+        • <b>Posto Graal / Shell (1,1 km)</b> — Gasolina R$ 5,89 | Diesel S10 R$ 5,94<br/>
+        • <b>Posto Ipiranga Km 190 (3,4 km)</b> — Gasolina R$ 5,79 | Etanol R$ 3,89
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span>🏢 EDIFÍCIOS, CONDOMÍNIOS & SERVIÇOS</span></div>
+      <div style="font-size:11px;color:#cbd5e1;line-height:1.6">
+        • Condomínio Residencial Alphaville<br/>
+        • Edifício Corporate Tower 3D<br/>
+        • Restaurante & Churrascaria Estrada Real<br/>
+        • Base Operacional PRF Km 188
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- BOTTOM HUD -->
+<div class="bottom-hud">
+  <div class="speedometer-cluster">
+    <div class="speed-box">
+      <div class="speed-val" id="speedVal">86</div>
+      <div class="speed-unit">KM/H</div>
+    </div>
+    <div class="speed-limit-sign" id="speedLimit">110</div>
+  </div>
+
+  <div class="trip-summary">
+    <div class="trip-stat">
+      <strong id="etaTime">18 min</strong>
+      <span>Chegada 20:34</span>
+    </div>
+    <div class="trip-stat">
+      <strong id="etaDist">14,8 km</strong>
+      <span>Distância</span>
+    </div>
+    <div class="trip-stat">
+      <strong style="color:#fbbf24" id="hudActiveSite">PMOR1</strong>
+      <span>Alvo OMR</span>
+    </div>
+  </div>
+
+  <div class="action-buttons">
+    <button class="hud-btn" id="btnToggleSim">⏸️ Pausar</button>
+    <button class="hud-btn" id="btnVoice">🔊 Voz ON</button>
+    <button class="hud-btn report" id="btnReport">⚠️ Reportar</button>
+  </div>
+</div>
+
+<!-- MODAL REPORTAR WAZE -->
+<div class="modal-backdrop" id="reportModal">
+  <div class="modal-card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h3 style="font-size:16px">⚠️ Reportar na Via (Waze + Maps)</h3>
+      <button class="mini-link" id="closeReportModal">✕</button>
+    </div>
+    <div class="report-grid">
+      <div class="report-option" data-rep="Radar Móvel"><div>📸</div>Radar Móvel</div>
+      <div class="report-option" data-rep="Polícia / PRF"><div>🚓</div>Polícia / PRF</div>
+      <div class="report-option" data-rep="Buraco na Pista"><div>🕳️</div>Buraco na Pista</div>
+      <div class="report-option" data-rep="Acidente"><div>💥</div>Acidente</div>
+      <div class="report-option" data-rep="Tempestade"><div>⛈️</div>Tempestade</div>
+      <div class="report-option" data-rep="Posto Barato"><div>⛽</div>Preço Posto</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL IMPORTAR KML OMR MAPS -->
+<div class="modal-backdrop" id="importModal">
+  <div class="modal-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="font-size:16px">📡 Importar Sites do OMR Maps (.KML)</h3>
+      <button class="mini-link" id="closeImportModal">✕</button>
+    </div>
+    <p style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:12px">
+      No Google My Maps (OMR Maps), clique nos <b>3 pontinhos</b> > <b>Exportar para KML/KMZ</b> (marque exportar como <b>.KML</b>) e selecione o arquivo abaixo para carregar todas as siglas no GPS:
+    </p>
+    <input type="file" id="kmlFileInput" accept=".kml,.xml,.csv,.txt" style="width:100%;margin-bottom:12px;color:#fff" />
+    <div style="font-size:11px;color:#94a3b8;margin-bottom:10px">Ou cole siglas e coordenadas no formato <code>SIGLA, LAT, LNG, DETENTORA</code>:</div>
+    <textarea id="bulkSitesText" rows="4" style="width:100%;background:#020617;color:#fff;border:1px solid #334155;border-radius:10px;padding:8px;font-size:12px" placeholder="PMOR1, -22.2148, -49.9462, SBA Torres&#10;SIPMOR1, -22.2210, -49.9510, Torres Brasil"></textarea>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="btn-go-site" id="btnSaveBulkSites">Salvar Sites no GPS</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // =========================================================================
+  // 1. BASE DE SITES OMR MAPS + LOCALSTORAGE
+  // =========================================================================
+  const OMR_MAP_ID = '1MNogDuJ0kYtkUUoZ4l_cnGOx4VGYNqY';
+  const defaultOmrSites = [
+    { code: 'PMOR1', name: 'Site PMOR1 — Marília / Zona Sul', lat: -22.2385, lng: -49.9421, tower: 'SBA Torres', carrier: 'TIM / Vivo 5G', distKm: 4.2, xOffset: 0, zPos: 1200 },
+    { code: 'SIPMOR1', name: 'Site SIPMOR1 — Repetidora Industrial', lat: -22.2148, lng: -49.9462, tower: 'Torres Brasil', carrier: 'Vivo / Claro', distKm: 7.8, xOffset: 95, zPos: 2200 },
+    { code: 'SIMIADTC', name: 'Site SIMIADTC — Hub Data & Telecom', lat: -22.1980, lng: -49.9615, tower: 'American Tower', carrier: 'TIM / Claro 5G', distKm: 11.4, xOffset: -110, zPos: 3200 },
+    { code: 'SIOIN01', name: 'Site SIOIN01 — Distrito Norte', lat: -22.1792, lng: -49.9530, tower: 'IHS Towers', carrier: 'Vivo / TIM', distKm: 14.8, xOffset: 80, zPos: 4200 },
+    { code: 'SPMAU01', name: 'Site SPMAU01 — Entroncamento Rodoviário', lat: -22.2512, lng: -49.9280, tower: 'SBA Torres', carrier: 'Claro / TIM', distKm: 18.5, xOffset: -90, zPos: 5200 },
+    { code: 'SIMAR02', name: 'Site SIMAR02 — Centro Operacional', lat: -22.2175, lng: -49.9501, tower: 'Torres Brasil', carrier: 'Vivo 5G', distKm: 6.1, xOffset: 105, zPos: 1750 }
+  ];
+
+  let omrSites = JSON.parse(localStorage.getItem('gps_alerta_omr_sites') || 'null') || defaultOmrSites;
+  let selectedSite = omrSites[0];
+
+  function saveSitesToStorage() {
+    localStorage.setItem('gps_alerta_omr_sites', JSON.stringify(omrSites));
+  }
+
+  // =========================================================================
+  // 2. ALERTAS INICIAIS (WAZE + GOOGLE MAPS + PRF + TEMPESTADE)
+  // =========================================================================
+  const roadAlerts = [
+    { type: 'radar', icon: '📸', title: 'Radar Fixo 110 km/h', desc: 'Km 184 • Waze + Google Maps', src: 'WAZE + MAPS', z: 600, x: 55 },
+    { type: 'police', icon: '🚓', title: 'Base Fixa PRF / Polícia Rodoviária', desc: 'Km 188 • Fiscalização ativa', src: 'PRF BRASIL', z: 1400, x: -60 },
+    { type: 'pothole', icon: '🕳️', title: 'Buraco na Pista (Faixa Direita)', desc: 'Reportado há 4 min via Waze', src: 'WAZE', z: 2050, x: 35 },
+    { type: 'storm', icon: '⛈️', title: 'Alerta de Tempestade & Ventos Fortes', desc: 'Chuva intensa a 2,5 km • Reduza', src: 'DEFESA CIVIL', z: 2700, x: 0 },
+    { type: 'toll', icon: '🚧', title: 'Pedágio Praça Km 192 — R$ 13,70', desc: 'Sem Parar / ConectCar / Tag', src: 'MAPS PEDÁGIO', z: 3500, x: 0 },
+    { type: 'accident', icon: '💥', title: 'Veículo no Acostamento / Atenção', desc: 'Km 196 • Trânsito lento', src: 'WAZE + MAPS', z: 4100, x: 48 }
+  ];
+
+  // =========================================================================
+  // 3. UI & BUSCA POR SIGLA OMR
+  // =========================================================================
+  const searchInput = document.getElementById('omrSearchInput');
+  const autocompleteBox = document.getElementById('searchAutocomplete');
+
+  function selectOmrSite(site) {
+    selectedSite = site;
+    document.getElementById('targetSiteCode').textContent = site.code;
+    document.getElementById('targetSiteName').textContent = site.name;
+    document.getElementById('targetSiteMeta').textContent = `Detentora: ${site.tower} • Lat: ${site.lat.toFixed(4)}, Lng: ${site.lng.toFixed(4)}`;
+    document.getElementById('hudActiveSite').textContent = site.code;
+    document.getElementById('etaDist').textContent = `${site.distKm.toFixed(1)} km`;
+    document.getElementById('etaTime').textContent = `${Math.max(4, Math.round(site.distKm * 1.25))} min`;
+    document.getElementById('turnStreet').textContent = `Rota OMR -> ${site.code} (${site.tower})`;
+
+    document.getElementById('linkOpenOmrMap').href = `https://www.google.com/maps/d/viewer?mid=${OMR_MAP_ID}&ll=${site.lat}%2C${site.lng}&z=16`;
+    document.getElementById('linkOpenGmaps').href = `https://www.google.com/maps/search/?api=1&query=${site.lat},${site.lng}`;
+    document.getElementById('linkOpenWaze').href = `https://waze.com/ul?ll=${site.lat},${site.lng}&navigate=yes`;
+
+    searchInput.value = site.code;
+    autocompleteBox.classList.remove('active');
+    speakAlert(`Rota traçada para o site ${site.code}, detentora ${site.tower}, a ${site.distKm} quilômetros.`);
+  }
+
+  function renderAutocomplete(query) {
+    const q = query.trim().toUpperCase();
+    const matches = q
+      ? omrSites.filter(s => s.code.toUpperCase().includes(q) || s.name.toUpperCase().includes(q) || s.tower.toUpperCase().includes(q))
+      : omrSites;
+
+    if (!matches.length) {
+      autocompleteBox.innerHTML = `<div class="auto-item"><div><strong>Buscar endereço "${query}"</strong><span>Navegar via coordenadas / mapa 3D</span></div><span style="color:#38bdf8">Ir ➔</span></div>`;
+      autocompleteBox.firstChild.onclick = () => {
+        const customSite = {
+          code: query.toUpperCase().slice(0, 12),
+          name: `Destino: ${query}`,
+          lat: -22.2150,
+          lng: -49.9480,
+          tower: 'Local / Endereço',
+          carrier: '5G / 4G',
+          distKm: 9.5,
+          xOffset: 85,
+          zPos: 2600
+        };
+        selectOmrSite(customSite);
+      };
+    } else {
+      autocompleteBox.innerHTML = matches.map(s => `
+        <div class="auto-item" data-code="${s.code}">
+          <div>
+            <strong>📡 ${s.code} — ${s.tower}</strong>
+            <span>${s.name} (${s.lat.toFixed(4)}, ${s.lng.toFixed(4)})</span>
+          </div>
+          <span style="color:#38bdf8;font-weight:700">${s.distKm} km ➔</span>
+        </div>
+      `).join('');
+
+      autocompleteBox.querySelectorAll('.auto-item').forEach(el => {
+        el.onclick = () => {
+          const found = omrSites.find(s => s.code === el.dataset.code);
+          if (found) selectOmrSite(found);
+        };
+      });
+    }
+    autocompleteBox.classList.add('active');
+  }
+
+  searchInput.addEventListener('focus', () => renderAutocomplete(searchInput.value));
+  searchInput.addEventListener('input', () => renderAutocomplete(searchInput.value));
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const q = searchInput.value.trim().toUpperCase();
+      const exact = omrSites.find(s => s.code.toUpperCase() === q) || omrSites.find(s => s.code.toUpperCase().includes(q));
+      if (exact) selectOmrSite(exact);
+      else renderAutocomplete(searchInput.value);
+    }
+  });
+
+  document.getElementById('btnGoSite').onclick = () => {
+    const q = searchInput.value.trim().toUpperCase();
+    const found = omrSites.find(s => s.code.toUpperCase() === q) || omrSites.find(s => s.code.toUpperCase().includes(q));
+    if (found) selectOmrSite(found);
+    else renderAutocomplete(searchInput.value);
+  };
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-omr-box')) {
+      autocompleteBox.classList.remove('active');
+    }
+  });
+
+  function renderSideLists() {
+    const siteListEl = document.getElementById('omrSiteList');
+    siteListEl.innerHTML = omrSites.map(s => `
+      <div class="card" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="window._pickSite('${s.code}')">
+        <div>
+          <strong style="color:#fbbf24;font-size:13px">📡 ${s.code}</strong>
+          <div style="font-size:11px;color:#cbd5e1">${s.name}</div>
+          <div style="font-size:10px;color:#94a3b8">${s.tower} • ${s.carrier}</div>
+        </div>
+        <span style="color:#38bdf8;font-weight:800;font-size:12px">${s.distKm} km</span>
+      </div>
+    `).join('');
+
+    const alertsListEl = document.getElementById('alertsFeedList');
+    alertsListEl.innerHTML = roadAlerts.map(a => `
+      <div class="card" style="display:flex;gap:10px;align-items:center">
+        <span style="font-size:20px">${a.icon}</span>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:700">${a.title}</div>
+          <div style="font-size:11px;color:#94a3b8">${a.desc}</div>
+        </div>
+        <span class="signal-pill sig-mid" style="font-size:9px">${a.src}</span>
+      </div>
+    `).join('');
+  }
+
+  window._pickSite = (code) => {
+    const s = omrSites.find(item => item.code === code);
+    if (s) selectOmrSite(s);
+  };
+
+  // =========================================================================
+  // 4. IMPORTADOR KML / CSV DO GOOGLE MY MAPS (OMR MAPS)
+  // =========================================================================
+  document.getElementById('btnOpenImport').onclick = () => document.getElementById('importModal').classList.add('open');
+  document.getElementById('closeImportModal').onclick = () => document.getElementById('importModal').classList.remove('open');
+
+  document.getElementById('kmlFileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target.result;
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(text, 'text/xml');
+      const placemarks = Array.from(xml.getElementsByTagName('Placemark'));
+      let imported = 0;
+
+      placemarks.forEach((pm, idx) => {
+        const nameEl = pm.getElementsByTagName('name')[0];
+        const coordEl = pm.getElementsByTagName('coordinates')[0];
+        if (nameEl && coordEl) {
+          const rawName = nameEl.textContent.trim();
+          const code = rawName.split(/[\s\-_]+/)[0].toUpperCase();
+          const parts = coordEl.textContent.trim().split(',');
+          const lng = parseFloat(parts[0]);
+          const lat = parseFloat(parts[1]);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            const existsIdx = omrSites.findIndex(s => s.code === code);
+            const entry = {
+              code,
+              name: rawName,
+              lat,
+              lng,
+              tower: 'OMR Maps KML',
+              carrier: 'TIM / Vivo / Claro',
+              distKm: +(3.5 + (idx % 25) * 1.4).toFixed(1),
+              xOffset: (idx % 2 === 0 ? 1 : -1) * (75 + (idx % 4) * 18),
+              zPos: 1200 + (idx % 12) * 450
+            };
+            if (existsIdx >= 0) omrSites[existsIdx] = entry;
+            else omrSites.unshift(entry);
+            imported++;
+          }
+        }
+      });
+
+      if (imported > 0) {
+        saveSitesToStorage();
+        renderSideLists();
+        alert(`${imported} sites importados com sucesso do OMR Maps!`);
+        document.getElementById('importModal').classList.remove('open');
+      } else {
+        alert('Nenhum Placemark com coordenadas encontrado. Verifique se o arquivo é .KML (não .KMZ compactado).');
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  document.getElementById('btnSaveBulkSites').onclick = () => {
+    const lines = document.getElementById('bulkSitesText').value.split('\n').map(l => l.trim()).filter(Boolean);
+    let count = 0;
+    lines.forEach((line, i) => {
+      const [codeRaw, latRaw, lngRaw, towerRaw] = line.split(',').map(p => p.trim());
+      if (codeRaw) {
+        const code = codeRaw.toUpperCase();
+        const entry = {
+          code,
+          name: `Site ${code} — OMR Maps`,
+          lat: parseFloat(latRaw) || -22.22,
+          lng: parseFloat(lngRaw) || -49.95,
+          tower: towerRaw || 'SBA / Torres Brasil',
+          carrier: '5G / 4G',
+          distKm: +(5 + i * 2.3).toFixed(1),
+          xOffset: i % 2 === 0 ? 90 : -90,
+          zPos: 1500 + i * 600
+        };
+        const idx = omrSites.findIndex(s => s.code === code);
+        if (idx >= 0) omrSites[idx] = entry;
+        else omrSites.unshift(entry);
+        count++;
+      }
+    });
+    if (count) {
+      saveSitesToStorage();
+      renderSideLists();
+      document.getElementById('importModal').classList.remove('open');
+    }
+  };
+
+  // =========================================================================
+  // 5. TABS, MODOS E REPORTE COMUNITÁRIO
+  // =========================================================================
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    };
+  });
+
+  let mapMode = 'nav3d';
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      mapMode = btn.dataset.mode;
+    };
+  });
+
+  document.getElementById('btnReport').onclick = () => document.getElementById('reportModal').classList.add('open');
+  document.getElementById('closeReportModal').onclick = () => document.getElementById('reportModal').classList.remove('open');
+
+  document.querySelectorAll('.report-option').forEach(opt => {
+    opt.onclick = () => {
+      const label = opt.dataset.rep;
+      roadAlerts.unshift({
+        type: 'custom',
+        icon: opt.querySelector('div').textContent,
+        title: `${label} (Reportado Agora)`,
+        desc: 'Compartilhado com usuários Waze & GPS Alerta 3.0',
+        src: 'VOCÊ • AO VIVO',
+        z: travelZ + 480,
+        x: 42
+      });
+      renderSideLists();
+      document.getElementById('reportModal').classList.remove('open');
+      speakAlert(`Alerta de ${label} adicionado na via.`);
+    };
+  });
+
+  let voiceEnabled = true;
+  document.getElementById('btnVoice').onclick = (e) => {
+    voiceEnabled = !voiceEnabled;
+    e.target.textContent = voiceEnabled ? '🔊 Voz ON' : '🔇 Voz OFF';
+  };
+
+  function speakAlert(text) {
+    if (!voiceEnabled || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'pt-BR';
+    u.rate = 1.08;
+    window.speechSynthesis.speak(u);
+  }
+
+  // =========================================================================
+  // 6. MOTOR GRÁFICO 3D (ESTRADA, PRÉDIOS, CONDOMÍNIOS, POSTOS E TORRES OMR)
+  // =========================================================================
+  const canvas = document.getElementById('mapCanvas');
+  const ctx = canvas.getContext('2d');
+
+  let width, height;
+  function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  let running = true;
+  document.getElementById('btnToggleSim').onclick = (e) => {
+    running = !running;
+    e.target.textContent = running ? '⏸️ Pausar' : '▶️ Retomar';
+  };
+
+  let travelZ = 0;
+  let cameraYaw = 0;
+  let cameraPitch = 0.52;
+  let isDragging = false;
+  let lastMouseX = 0, lastMouseY = 0;
+
+  canvas.addEventListener('pointerdown', (e) => {
+    isDragging = true;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!isDragging) return;
+    cameraYaw += (e.clientX - lastMouseX) * 0.003;
+    cameraPitch = Math.max(0.28, Math.min(0.85, cameraPitch + (e.clientY - lastMouseY) * 0.002));
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+  });
+  window.addEventListener('pointerup', () => isDragging = false);
+
+  const landmarks3D = [
+    { name: '🏢 Cond. Residencial Alphaville', x: -165, z: 400, w: 70, h: 115, color: '#1e3a5f' },
+    { name: '⛽ Posto Shell • Gas R$ 5,89', x: 150, z: 750, w: 65, h: 48, color: '#b45309' },
+    { name: '🍽️ Churrascaria Estrada Real', x: -155, z: 1150, w: 68, h: 55, color: '#7c2d12' },
+    { name: '🗼 Torre SBA / Vivo 5G (-82 dBm)', x: 175, z: 1550, w: 24, h: 175, color: '#0284c7', isTower: true },
+    { name: '🏬 Shopping & Ed. Corporate 3D', x: -175, z: 2000, w: 80, h: 140, color: '#312e81' },
+    { name: '⛽ Posto Ipiranga • Etanol R$ 3,89', x: 155, z: 2550, w: 64, h: 46, color: '#1d4ed8' },
+    { name: '🗼 Torre Brasil / TIM 5G', x: -170, z: 3100, w: 24, h: 180, color: '#059669', isTower: true },
+    { name: '🏘️ Condomínio Parque das Flores', x: 165, z: 3650, w: 75, h: 95, color: '#1e293b' }
+  ];
+
+  function project3D(worldX, worldY, worldZ) {
+    const dz = worldZ - travelZ;
+    if (dz <= 15) return null;
+    const fov = 460;
+    const scale = fov / dz;
+    const curveX = Math.sin((worldZ) * 0.0012) * 90 - Math.sin(travelZ * 0.0012) * 90;
+    const rx = (worldX + curveX) * Math.cos(cameraYaw) - dz * Math.sin(cameraYaw) * 0.25;
+    const screenX = width * 0.44 + rx * scale;
+    const horizonY = height * (0.36 + (cameraPitch - 0.52) * 0.45);
+    const screenY = horizonY + (115 - worldY) * scale;
+    return { x: screenX, y: screenY, scale, dz };
+  }
+
+  function renderLoop() {
+    if (running) {
+      travelZ += 4.2;
+      const speed = Math.round(84 + Math.sin(travelZ * 0.01) * 8);
+      document.getElementById('speedVal').textContent = speed;
+    }
+
+    // Céu / Fundo conforme modo
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, height * 0.5);
+    if (mapMode === 'earth') {
+      skyGrad.addColorStop(0, '#04131c');
+      skyGrad.addColorStop(1, '#0c3547');
+    } else if (mapMode === 'night') {
+      skyGrad.addColorStop(0, '#02040a');
+      skyGrad.addColorStop(1, '#090d1a');
+    } else {
+      skyGrad.addColorStop(0, '#071326');
+      skyGrad.addColorStop(1, '#122b49');
+    }
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, width, height);
+
+    // Solo 3D
+    const horizonY = height * (0.36 + (cameraPitch - 0.52) * 0.45);
+    ctx.fillStyle = mapMode === 'earth' ? '#10261b' : (mapMode === 'night' ? '#050811' : '#0b1526');
+    ctx.fillRect(0, horizonY, width, height - horizonY);
+
+    // Grade de terreno
+    ctx.strokeStyle = mapMode === 'earth' ? 'rgba(52, 211, 153, 0.12)' : 'rgba(56, 189, 248, 0.08)';
+    ctx.lineWidth = 1;
+    const gridStart = Math.floor(travelZ / 120) * 120;
+    for (let z = gridStart + 120; z < travelZ + 4400; z += 120) {
+      const pL = project3D(-900, 0, z);
+      const pR = project3D(900, 0, z);
+      if (pL && pR) {
+        ctx.beginPath();
+        ctx.moveTo(pL.x, pL.y);
+        ctx.lineTo(pR.x, pR.y);
+        ctx.stroke();
+      }
+    }
+
+    // Rodovia 3D
+    const step = 60;
+    const startRoad = Math.floor(travelZ / step) * step;
+    for (let z = startRoad + 4400; z > startRoad; z -= step) {
+      const p1L = project3D(-72, 0, z);
+      const p1R = project3D(72, 0, z);
+      const p2L = project3D(-72, 0, z + step);
+      const p2R = project3D(72, 0, z + step);
+      if (!p1L || !p2L) continue;
+
+      ctx.fillStyle = mapMode === 'night' ? '#111827' : '#1e293b';
+      ctx.beginPath();
+      ctx.moveTo(p1L.x, p1L.y);
+      ctx.lineTo(p1R.x, p1R.y);
+      ctx.lineTo(p2R.x, p2R.y);
+      ctx.lineTo(p2L.x, p2L.y);
+      ctx.closePath();
+      ctx.fill();
+
+      // Bordas luminosas da via
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = Math.max(1, 2.5 * p1L.scale);
+      ctx.beginPath();
+      ctx.moveTo(p1L.x, p1L.y); ctx.lineTo(p2L.x, p2L.y);
+      ctx.moveTo(p1R.x, p1R.y); ctx.lineTo(p2R.x, p2R.y);
+      ctx.stroke();
+
+      // Faixa central tracejada
+      if (Math.floor(z / step) % 2 === 0) {
+        const c1 = project3D(0, 0, z);
+        const c2 = project3D(0, 0, z + step * 0.6);
+        if (c1 && c2) {
+          ctx.strokeStyle = '#facc15';
+          ctx.lineWidth = Math.max(1, 2 * c1.scale);
+          ctx.beginPath();
+          ctx.moveTo(c1.x, c1.y);
+          ctx.lineTo(c2.x, c2.y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Prédios, Condomínios, Postos e Torres (Loop infinito a cada 4200m)
+    const cycleLen = 4200;
+    const baseCycle = Math.floor(travelZ / cycleLen) * cycleLen;
+
+    landmarks3D.forEach(item => {
+      let worldZ = baseCycle + item.z;
+      if (worldZ < travelZ + 40) worldZ += cycleLen;
+      const baseP = project3D(item.x, 0, worldZ);
+      const topP = project3D(item.x, item.h, worldZ);
+      if (!baseP || !topP || baseP.dz > 4200) return;
+
+      const bw = item.w * baseP.scale;
+      const bh = baseP.y - topP.y;
+
+      if (item.isTower) {
+        // Torre treliçada de telecom
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = Math.max(1.5, 2.5 * baseP.scale);
+        ctx.beginPath();
+        ctx.moveTo(baseP.x - bw * 0.4, baseP.y);
+        ctx.lineTo(topP.x, topP.y);
+        ctx.lineTo(baseP.x + bw * 0.4, baseP.y);
+        ctx.stroke();
+
+        // Luz de balizamento no topo
+        ctx.fillStyle = Math.floor(Date.now() / 400) % 2 === 0 ? '#ef4444' : '#fca5a5';
+        ctx.beginPath();
+        ctx.arc(topP.x, topP.y, Math.max(2.5, 4 * baseP.scale), 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Bloco 3D extrudado
+        ctx.fillStyle = item.color;
+        ctx.fillRect(baseP.x - bw / 2, topP.y, bw, bh);
+        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(baseP.x - bw / 2, topP.y, bw, bh);
+      }
+
+      if (baseP.dz < 2400) {
+        ctx.font = 'bold 11px Segoe UI, sans-serif';
+        const tw = ctx.measureText(item.name).width + 12;
+        ctx.fillStyle = 'rgba(7, 11, 20, 0.85)';
+        ctx.fillRect(topP.x - tw / 2, topP.y - 22, tw, 17);
+        ctx.fillStyle = '#f8fafc';
+        ctx.textAlign = 'center';
+        ctx.fillText(item.name, topP.x, topP.y - 10);
+      }
+    });
+
+    // SITE ALVO DO OMR MAPS NO HORIZONTE / ROTA 3D
+    if (selectedSite) {
+      let siteWorldZ = baseCycle + (selectedSite.zPos % cycleLen);
+      if (siteWorldZ < travelZ + 180) siteWorldZ += cycleLen;
+      const sBase = project3D(selectedSite.xOffset || 95, 0, siteWorldZ);
+      const sTop = project3D(selectedSite.xOffset || 95, 195, siteWorldZ);
+      if (sBase && sTop) {
+        // Feixe dourado da torre OMR
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = Math.max(2, 4 * sBase.scale);
+        ctx.beginPath();
+        ctx.moveTo(sBase.x - 14 * sBase.scale, sBase.y);
+        ctx.lineTo(sTop.x, sTop.y);
+        ctx.lineTo(sBase.x + 14 * sBase.scale, sBase.y);
+        ctx.stroke();
+
+        // Etiqueta destacada da Sigla OMR
+        const badgeText = `📡 ALVO OMR: ${selectedSite.code}`;
+        ctx.font = 'bold 12px Segoe UI, sans-serif';
+        const bw = ctx.measureText(badgeText).width + 16;
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(sTop.x - bw / 2, sTop.y - 28, bw, 22);
+        ctx.fillStyle = '#000';
+        ctx.textAlign = 'center';
+        ctx.fillText(badgeText, sTop.x, sTop.y - 13);
+      }
+    }
+
+    // Pins de Alertas na Pista (Radar, Polícia, Buraco, Tempestade)
+    let nearestAlert = null;
+    roadAlerts.forEach(al => {
+      let az = baseCycle + (al.z % cycleLen);
+      if (az < travelZ + 50) az += cycleLen;
+      const dist = az - travelZ;
+      if (!nearestAlert || dist < nearestAlert.dist) {
+        nearestAlert = { ...al, dist };
+      }
+      const p = project3D(al.x, 18, az);
+      if (p && dist < 3000) {
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.92)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(10, 18 * p.scale), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = `${Math.max(11, Math.round(16 * p.scale))}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(al.icon, p.x, p.y + 5 * p.scale);
+      }
+    });
+
+    if (nearestAlert) {
+      document.getElementById('alertEmoji').textContent = nearestAlert.icon;
+      document.getElementById('alertTitle').textContent = `${nearestAlert.title} a ${Math.round(nearestAlert.dist)} m`;
+      document.getElementById('alertSub').textContent = nearestAlert.desc;
+      document.getElementById('alertSrc').textContent = nearestAlert.src;
+    }
+
+    // Cursor 3D do Veículo (Estilo Waze / GPS)
+    const carX = width * 0.44;
+    const carY = height * 0.80;
+    ctx.save();
+    ctx.translate(carX, carY);
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+    ctx.beginPath();
+    ctx.arc(0, 4, 34, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#38bdf8';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, -24);
+    ctx.lineTo(20, 18);
+    ctx.lineTo(0, 10);
+    ctx.lineTo(-20, 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    requestAnimationFrame(renderLoop);
+  }
+
+  renderSideLists();
+  selectOmrSite(omrSites[0]);
+  renderLoop();
+</script>
+</body>
+</html>
