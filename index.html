@@ -1,0 +1,1139 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07111f">
+<title>Alerta GPS</title>
+
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+<style>
+:root{
+  --bg:#07111f;
+  --panel:#0b1b30;
+  --panel2:#102641;
+  --cyan:#22d3ee;
+  --blue:#2563eb;
+  --green:#10b981;
+  --yellow:#f59e0b;
+  --red:#ef4444;
+  --white:#f8fafc;
+  --muted:#94a3b8;
+}
+*{box-sizing:border-box}
+html,body,#map{width:100%;height:100%;margin:0}
+body{
+  font-family:Arial,Helvetica,sans-serif;
+  background:var(--bg);
+  color:var(--white);
+  overflow:hidden;
+}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+#map{position:absolute;inset:0}
+.topbar{
+  position:absolute;z-index:5;top:10px;left:10px;right:10px;
+  display:flex;gap:7px;align-items:center;flex-wrap:wrap;
+}
+.logo{
+  background:#07111fee;border:1px solid #22d3ee66;
+  padding:10px 13px;border-radius:13px;font-weight:900;
+  letter-spacing:.5px;box-shadow:0 5px 20px #0008;
+}
+.logo span{color:var(--cyan)}
+.searchbox{
+  display:flex;flex:1;min-width:180px;gap:5px;
+  background:#07111fee;border:1px solid #22d3ee66;
+  border-radius:13px;padding:5px;
+}
+.searchbox input{
+  flex:1;min-width:0;background:transparent;border:0;
+  outline:0;color:white;padding:8px;
+}
+.btn{
+  border:1px solid #ffffff24;background:#102641;
+  color:white;padding:9px 11px;border-radius:10px;
+  font-size:12px;font-weight:bold;
+}
+.btn.primary{background:linear-gradient(135deg,#0284c7,#2563eb);border:0}
+.btn.green{background:#047857;border:0}
+.btn.red{background:#991b1b;border:0}
+.btn.active{border-color:var(--cyan);color:var(--cyan)}
+.panel{
+  position:absolute;z-index:4;top:90px;left:10px;
+  width:340px;max-width:calc(100vw - 20px);
+  max-height:calc(100vh - 190px);overflow:auto;
+  background:#08182bea;border:1px solid #22d3ee55;
+  border-radius:17px;padding:13px;
+  box-shadow:0 12px 35px #0009;backdrop-filter:blur(12px);
+}
+.panel h3{font-size:14px;margin:0 0 10px}
+.panel p{font-size:12px;color:#cbd5e1;line-height:1.5}
+.panel .muted{color:var(--muted);font-size:11px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.stats{display:flex;gap:15px;margin:12px 0}
+.stats strong{font-size:19px;display:block}
+.stats small{font-size:10px;color:var(--muted)}
+.tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}
+.tabcontent{display:none}
+.tabcontent.active{display:block}
+.item{
+  background:#ffffff0a;border:1px solid #ffffff17;
+  border-left:3px solid var(--cyan);border-radius:9px;
+  padding:9px;margin:7px 0;font-size:12px;
+}
+.item.warning{border-left-color:var(--yellow)}
+.item.danger{border-left-color:var(--red)}
+.item b{display:block;margin-bottom:4px}
+.bottom{
+  position:absolute;z-index:5;bottom:10px;left:10px;right:10px;
+  display:flex;gap:6px;overflow-x:auto;padding:5px;
+}
+.bottom button{white-space:nowrap}
+.results{
+  position:absolute;z-index:10;top:62px;left:10px;right:10px;
+  max-width:600px;margin:auto;display:none;
+  max-height:230px;overflow:auto;background:#0b1b30;
+  border:1px solid var(--cyan);border-radius:12px;
+}
+.results.show{display:block}
+.result{padding:11px;border-bottom:1px solid #ffffff19;font-size:12px}
+.result:active{background:#164e63}
+.side{
+  position:absolute;z-index:8;right:10px;top:90px;bottom:80px;
+  width:360px;max-width:calc(100vw - 20px);
+  background:#08182bf2;border:1px solid #22d3ee66;
+  border-radius:16px;padding:13px;overflow:auto;display:none;
+  box-shadow:0 12px 35px #0009;backdrop-filter:blur(12px);
+}
+.side.show{display:block}
+.side h2{font-size:17px;margin:0 0 12px}
+.field{
+  width:100%;padding:10px;border-radius:9px;
+  border:1px solid #ffffff25;background:#07111f;
+  color:white;margin:5px 0;
+}
+textarea.field{min-height:75px;resize:vertical}
+.radioitem{
+  background:#ffffff0a;border:1px solid #ffffff1c;
+  padding:12px;border-radius:12px;margin:8px 0;
+}
+.radioitem b{display:block;margin-bottom:5px}
+.radioitem a{color:var(--cyan);font-size:12px}
+#status{
+  position:absolute;z-index:6;bottom:68px;left:10px;
+  background:#07111fe8;padding:8px 11px;
+  border-radius:10px;border:1px solid #ffffff22;
+  font-size:11px;max-width:calc(100vw - 20px);
+}
+#weatherIcon{font-size:35px}
+.hidden{display:none!important}
+@media(max-width:650px){
+  .logo{font-size:12px;padding:9px}
+  .panel{top:104px;width:calc(100vw - 20px);max-height:42vh}
+  .side{top:95px;bottom:75px;width:calc(100vw - 20px)}
+  .topbar{gap:5px}
+  .bottom{bottom:8px}
+  #status{bottom:62px}
+}
+</style>
+</head>
+
+<body>
+<div id="map"></div>
+
+<div class="topbar">
+  <div class="logo">⚡ ALERTA <span>GPS</span></div>
+  <div class="searchbox">
+    <input id="searchInput" placeholder="Buscar endereço ou cidade...">
+    <button class="btn primary" onclick="searchPlace()">BUSCAR</button>
+  </div>
+  <button class="btn" onclick="locateMe()">📍</button>
+</div>
+
+<div id="results" class="results"></div>
+
+<div class="panel">
+  <h3>🧭 Central de navegação</h3>
+  <div class="row">
+    <button class="btn primary" onclick="startNavigation()">Iniciar rota</button>
+    <button class="btn" onclick="clearRoute()">Limpar</button>
+    <button class="btn" onclick="toggleSteps()">Instruções</button>
+  </div>
+
+  <div class="stats">
+    <div><strong id="distance">--</strong><small>DISTÂNCIA</small></div>
+    <div><strong id="duration">--</strong><small>TEMPO ESTIMADO</small></div>
+  </div>
+
+  <div id="routeMessage" class="muted">Pesquise um destino para calcular uma rota.</div>
+  <div id="steps" class="hidden"></div>
+
+  <hr style="border-color:#ffffff20;margin:12px 0">
+
+  <h3>🌦️ Condições meteorológicas</h3>
+  <div class="row">
+    <div id="weatherIcon">🌤️</div>
+    <div>
+      <strong id="weatherText">Aguardando localização</strong>
+      <div class="muted" id="temperature">-- °C</div>
+    </div>
+  </div>
+  <p id="weatherDetails" class="muted">O clima será consultado quando houver localização.</p>
+  <button class="btn" onclick="loadWeather()">Atualizar clima</button>
+
+  <hr style="border-color:#ffffff20;margin:12px 0">
+
+  <h3>🚨 Alertas e ocorrências</h3>
+  <div id="alerts">
+    <div class="item warning">Os alertas oficiais serão consultados quando disponíveis.</div>
+  </div>
+  <button class="btn" onclick="loadOfficialAlerts()">Consultar alertas</button>
+</div>
+
+<div id="side" class="side">
+  <div class="row" style="justify-content:space-between">
+    <h2 id="sideTitle">Painel</h2>
+    <button class="btn red" onclick="closeSide()">✕</button>
+  </div>
+
+  <div id="tab-map" class="tabcontent active">
+    <h3>🗺️ Camadas do mapa</h3>
+    <div class="row">
+      <button class="btn" onclick="setMapStyle('street')">Mapa</button>
+      <button class="btn" onclick="setMapStyle('satellite')">Satélite</button>
+      <button class="btn" onclick="toggle3D()">3D</button>
+      <button class="btn" onclick="toggleTrafficInfo()">Trânsito</button>
+    </div>
+    <p class="muted">O mapa utiliza dados do OpenStreetMap e imagens de satélite da Esri.</p>
+  </div>
+
+  <div id="tab-services" class="tabcontent">
+    <h3>📍 Serviços próximos</h3>
+    <div class="row">
+      <button class="btn" onclick="loadPOIs('hospital')">Hospitais</button>
+      <button class="btn" onclick="loadPOIs('fuel')">Postos</button>
+      <button class="btn" onclick="loadPOIs('pharmacy')">Farmácias</button>
+      <button class="btn" onclick="loadPOIs('restaurant')">Restaurantes</button>
+      <button class="btn" onclick="loadPOIs('parking')">Estacionamentos</button>
+      <button class="btn" onclick="loadPOIs('charging_station')">Carregadores</button>
+    </div>
+    <div id="poiResults"></div>
+  </div>
+
+  <div id="tab-reports" class="tabcontent">
+    <h3>📢 Relatar ocorrência</h3>
+    <p class="muted">O relato será salvo neste aparelho. Para compartilhar entre usuários, será necessário um servidor.</p>
+    <select id="reportType" class="field">
+      <option>Acidente</option>
+      <option>Congestionamento</option>
+      <option>Obra na pista</option>
+      <option>Buraco na pista</option>
+      <option>Alagamento</option>
+      <option>Veículo parado</option>
+      <option>Fiscalização</option>
+      <option>Interdição</option>
+      <option>Outro</option>
+    </select>
+    <textarea id="reportDescription" class="field" placeholder="Descreva o que está acontecendo..."></textarea>
+    <button class="btn primary" onclick="saveReport()">Enviar relato</button>
+    <div id="reportList"></div>
+  </div>
+
+  <div id="tab-radio" class="tabcontent">
+    <h3>📻 Rádios ao vivo</h3>
+    <p class="muted">Selecione uma rádio para abrir a transmissão oficial. A reprodução incorporada depende de autorização do site da emissora.</p>
+
+    <div class="radioitem">
+      <b>🎵 Mix FM São Paulo — 106,3 FM</b>
+      <a href="https://aovivo.radiomixfm.com.br/" target="_blank" rel="noopener">Abrir transmissão oficial</a>
+    </div>
+
+    <div class="radioitem">
+      <b>🎶 Nova Brasil FM São Paulo — 89,7 FM</b>
+      <a href="https://novabrasilfm.com.br/" target="_blank" rel="noopener">Abrir transmissão oficial</a>
+    </div>
+
+    <div class="radioitem">
+      <b>📻 Rádio Disney Brasil — 91,3 FM</b>
+      <a href="https://radiodisney.com.br/" target="_blank" rel="noopener">Abrir transmissão oficial</a>
+    </div>
+
+    <div class="radioitem">
+      <b>📰 BandNews FM</b>
+      <a href="https://www.band.uol.com.br/bandnews-fm" target="_blank" rel="noopener">Abrir site oficial</a>
+    </div>
+
+    <div class="radioitem">
+      <b>📰 CBN</b>
+      <a href="https://cbn.globo.com/" target="_blank" rel="noopener">Abrir site oficial</a>
+    </div>
+
+    <div class="radioitem">
+      <b>📰 Jovem Pan</b>
+      <a href="https://jovempan.com.br/" target="_blank" rel="noopener">Abrir site oficial</a>
+    </div>
+  </div>
+
+  <div id="tab-favorites" class="tabcontent">
+    <h3>⭐ Favoritos</h3>
+    <button class="btn primary" onclick="saveFavorite()">Salvar localização atual</button>
+    <div id="favoriteList"></div>
+  </div>
+</div>
+
+<div class="bottom">
+  <button class="btn" onclick="openTab('map','Mapa')">🗺️ Mapa</button>
+  <button class="btn" onclick="openTab('services','Serviços')">📍 Serviços</button>
+  <button class="btn" onclick="openTab('reports','Relatos')">📢 Relatos</button>
+  <button class="btn" onclick="openTab('radio','Rádio')">📻 Rádio</button>
+  <button class="btn" onclick="openTab('favorites','Favoritos')">⭐ Favoritos</button>
+  <button class="btn" onclick="speakStatus()">🔊 Voz</button>
+</div>
+
+<div id="status">Iniciando Alerta GPS...</div>
+
+<script>
+"use strict";
+
+/* CONFIGURAÇÕES PRINCIPAIS */
+const CONFIG={
+  mapCenter:[-49.945,-22.217],
+  defaultZoom:12,
+  geocoder:"https://nominatim.openstreetmap.org/search",
+  weather:"https://api.open-meteo.com/v1/forecast",
+  route:"https://router.project-osrm.org/route/v1/driving/",
+  overpass:"https://overpass-api.de/api/interpreter"
+};
+
+let map;
+let currentPosition=null;
+let destination=null;
+let routeData=null;
+let gpsWatch=null;
+let navigationActive=false;
+let currentStyle="street";
+let is3D=false;
+let trafficVisible=false;
+let userMarker=null;
+let destinationMarker=null;
+let poiMarkers=[];
+let routeLayerId="main-route";
+let routeSourceId="main-route-source";
+let lastWeatherRequest=0;
+
+function status(message){
+  document.getElementById("status").textContent=message;
+}
+
+function escapeHTML(value){
+  return String(value).replace(/[&<>"']/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+
+/* MAPA */
+const streetStyle={
+  version:8,
+  sources:{
+    osm:{
+      type:"raster",
+      tiles:["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      tileSize:256,
+      attribution:"© OpenStreetMap contributors"
+    }
+  },
+  layers:[
+    {id:"osm",type:"raster",source:"osm"}
+  ]
+};
+
+const satelliteStyle={
+  version:8,
+  sources:{
+    satellite:{
+      type:"raster",
+      tiles:[
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+      ],
+      tileSize:256,
+      attribution:"© Esri"
+    }
+  },
+  layers:[
+    {id:"satellite",type:"raster",source:"satellite"}
+  ]
+};
+
+map=new maplibregl.Map({
+  container:"map",
+  style:streetStyle,
+  center:CONFIG.mapCenter,
+  zoom:CONFIG.defaultZoom,
+  pitch:0
+});
+
+map.addControl(new maplibregl.NavigationControl(),"bottom-right");
+map.addControl(new maplibregl.ScaleControl(),"bottom-right");
+
+map.on("load",()=>{
+  status("Mapa carregado. Ative o GPS para começar.");
+  restoreRouteLayer();
+  startGPS();
+});
+
+function setMapStyle(style){
+  currentStyle=style;
+  map.setStyle(style==="satellite"?satelliteStyle:streetStyle);
+  map.once("style.load",()=>{
+    restoreRouteLayer();
+    status("Estilo do mapa atualizado.");
+  });
+}
+
+function toggle3D(){
+  is3D=!is3D;
+  map.easeTo({pitch:is3D?60:0,bearing:is3D?-15:0,duration:800});
+  status(is3D?"Visualização 3D ativada":"Visualização 2D ativada");
+}
+
+function toggleTrafficInfo(){
+  trafficVisible=!trafficVisible;
+  status(trafficVisible?
+    "Camada de trânsito solicitada. Não há provedor de trânsito em tempo real conectado.":
+    "Informação de trânsito desativada.");
+}
+
+/* GPS */
+function startGPS(){
+  if(!navigator.geolocation){
+    status("Este aparelho não oferece suporte à geolocalização.");
+    return;
+  }
+  if(gpsWatch!==null) return;
+
+  gpsWatch=navigator.geolocation.watchPosition(
+    position=>{
+      const coords=[
+        position.coords.longitude,
+        position.coords.latitude
+      ];
+      currentPosition={
+        lng:coords[0],
+        lat:coords[1],
+        accuracy:position.coords.accuracy,
+        speed:position.coords.speed
+      };
+
+      if(!userMarker){
+        const element=document.createElement("div");
+        element.style.cssText="width:18px;height:18px;border:4px solid white;border-radius:50%;background:#06b6d4;box-shadow:0 0 0 7px #06b6d455";
+        userMarker=new maplibregl.Marker({element})
+          .setLngLat(coords).addTo(map);
+        map.flyTo({center:coords,zoom:15});
+      }else{
+        userMarker.setLngLat(coords);
+      }
+
+      status("GPS ativo • Precisão aproximada: "+Math.round(position.coords.accuracy)+" m");
+      if(navigationActive && destination) checkDeviation();
+    },
+    error=>{
+      status("Não foi possível obter o GPS: "+error.message);
+    },
+    {
+      enableHighAccuracy:true,
+      maximumAge:5000,
+      timeout:15000
+    }
+  );
+}
+
+function locateMe(){
+  if(!currentPosition){
+    startGPS();
+    status("Aguardando sinal GPS...");
+    return;
+  }
+  map.flyTo({
+    center:[currentPosition.lng,currentPosition.lat],
+    zoom:16
+  });
+}
+
+/* BUSCA DE ENDEREÇO */
+let searchTimer=null;
+
+document.getElementById("searchInput").addEventListener("input",()=>{
+  clearTimeout(searchTimer);
+  const value=document.getElementById("searchInput").value.trim();
+  if(value.length<3){
+    document.getElementById("results").classList.remove("show");
+    return;
+  }
+  searchTimer=setTimeout(()=>searchPlace(),650);
+});
+
+document.getElementById("searchInput").addEventListener("keydown",e=>{
+  if(e.key==="Enter") searchPlace();
+});
+
+async function searchPlace(){
+  const query=document.getElementById("searchInput").value.trim();
+  if(!query) return;
+
+  status("Pesquisando endereço...");
+  try{
+    const url=CONFIG.geocoder+"?format=jsonv2&limit=6&q="+encodeURIComponent(query);
+    const response=await fetch(url,{
+      headers:{"Accept-Language":"pt-BR"}
+    });
+    if(!response.ok) throw new Error("Falha na busca");
+    const data=await response.json();
+
+    const results=document.getElementById("results");
+    results.innerHTML="";
+
+    if(!data.length){
+      results.innerHTML='<div class="result">Nenhum endereço encontrado.</div>';
+      results.classList.add("show");
+      return;
+    }
+
+    data.forEach(place=>{
+      const item=document.createElement("div");
+      item.className="result";
+      item.textContent=place.display_name;
+      item.onclick=()=>selectDestination(place);
+      results.appendChild(item);
+    });
+    results.classList.add("show");
+    status("Selecione o destino desejado.");
+  }catch(error){
+    status("Erro na busca. Tente novamente.");
+  }
+}
+
+function selectDestination(place){
+  destination={
+    lng:Number(place.lon),
+    lat:Number(place.lat),
+    name:place.display_name
+  };
+  document.getElementById("results").classList.remove("show");
+
+  if(destinationMarker) destinationMarker.remove();
+  destinationMarker=new maplibregl.Marker({color:"#ef4444"})
+    .setLngLat([destination.lng,destination.lat])
+    .setPopup(new maplibregl.Popup().setText(destination.name))
+    .addTo(map);
+
+  map.flyTo({
+    center:[destination.lng,destination.lat],
+    zoom:14
+  });
+  status("Destino selecionado. Calculando rota...");
+  calculateRoute();
+}
+
+/* ROTAS REAIS PELO SERVIÇO OSRM */
+async function calculateRoute(){
+  if(!currentPosition){
+    status("Ative o GPS antes de calcular uma rota.");
+    return;
+  }
+  if(!destination){
+    status("Pesquise e selecione um destino.");
+    return;
+  }
+
+  const origin=currentPosition.lng+","+currentPosition.lat;
+  const target=destination.lng+","+destination.lat;
+  const url=CONFIG.route+origin+";"+target+
+    "?overview=full&geometries=geojson&steps=true&alternatives=true";
+
+  try{
+    const response=await fetch(url);
+    if(!response.ok) throw new Error("Serviço de rotas indisponível");
+    const data=await response.json();
+
+    if(data.code!=="Ok" || !data.routes || !data.routes.length){
+      throw new Error("Nenhuma rota encontrada");
+    }
+
+    routeData=data.routes[0];
+    drawRoute(routeData.geometry);
+    showRouteInfo(routeData);
+    status("Rota calculada. Confira as condições antes de sair.");
+    loadWeatherAlongRoute();
+  }catch(error){
+    routeData=null;
+    status("Não foi possível calcular a rota. Serviço externo indisponível.");
+    document.getElementById("routeMessage").textContent=
+      "Não foi possível obter uma rota real. Tente novamente mais tarde.";
+  }
+}
+
+function drawRoute(geometry){
+  if(map.getLayer(routeLayerId)) map.removeLayer(routeLayerId);
+  if(map.getSource(routeSourceId)) map.removeSource(routeSourceId);
+
+  map.addSource(routeSourceId,{
+    type:"geojson",
+    data:{
+      type:"Feature",
+      properties:{},
+      geometry:geometry
+    }
+  });
+
+  map.addLayer({
+    id:routeLayerId,
+    type:"line",
+    source:routeSourceId,
+    layout:{
+      "line-join":"round",
+      "line-cap":"round"
+    },
+    paint:{
+      "line-color":"#22d3ee",
+      "line-width":6,
+      "line-opacity":0.9
+    }
+  });
+
+  const coordinates=geometry.coordinates;
+  const bounds=coordinates.reduce(
+    (b,coord)=>b.extend(coord),
+    new maplibregl.LngLatBounds(coordinates[0],coordinates[0])
+  );
+  map.fitBounds(bounds,{padding:70,maxZoom:15});
+}
+
+function restoreRouteLayer(){
+  if(routeData && routeData.geometry){
+    drawRoute(routeData.geometry);
+  }
+}
+
+function showRouteInfo(route){
+  const km=route.distance/1000;
+  const minutes=Math.round(route.duration/60);
+
+  document.getElementById("distance").textContent=km.toFixed(1)+" km";
+  document.getElementById("duration").textContent=formatDuration(minutes);
+  document.getElementById("routeMessage").textContent=
+    "Destino: "+destination.name+
+    ". Estimativa baseada no serviço de rotas, sem confirmação de trânsito em tempo real.";
+
+  const steps=document.getElementById("steps");
+  steps.innerHTML="";
+  const legs=route.legs||[];
+
+  legs.forEach(leg=>{
+    (leg.steps||[]).forEach(step=>{
+      const name=step.name||"Via sem identificação";
+      const instruction=step.maneuver&&step.maneuver.type?
+        step.maneuver.type:"Siga em frente";
+      const div=document.createElement("div");
+      div.className="item";
+      div.textContent=instruction+" — "+name;
+      steps.appendChild(div);
+    });
+  });
+}
+
+function formatDuration(minutes){
+  if(minutes<60) return minutes+" min";
+  return Math.floor(minutes/60)+" h "+(minutes%60)+" min";
+}
+
+function toggleSteps(){
+  document.getElementById("steps").classList.toggle("hidden");
+}
+
+function clearRoute(){
+  navigationActive=false;
+  routeData=null;
+  destination=null;
+  if(destinationMarker){
+    destinationMarker.remove();
+    destinationMarker=null;
+  }
+  if(map.getLayer(routeLayerId)) map.removeLayer(routeLayerId);
+  if(map.getSource(routeSourceId)) map.removeSource(routeSourceId);
+  document.getElementById("distance").textContent="--";
+  document.getElementById("duration").textContent="--";
+  document.getElementById("routeMessage").textContent="Rota removida.";
+  document.getElementById("steps").innerHTML="";
+  status("Rota limpa.");
+}
+
+function startNavigation(){
+  if(!destination){
+    status("Primeiro pesquise um destino.");
+    return;
+  }
+  if(!currentPosition){
+    status("Aguardando sinal GPS.");
+    return;
+  }
+  navigationActive=true;
+  calculateRoute();
+  status("Navegação iniciada. Mantenha atenção à via.");
+  speak("Navegação iniciada.");
+}
+
+function checkDeviation(){
+  if(!routeData || !currentPosition) return;
+  const coords=routeData.geometry.coordinates;
+  let minDistance=Infinity;
+
+  for(let i=0;i<coords.length;i+=Math.max(1,Math.floor(coords.length/100))){
+    const distance=distanceMeters(
+      currentPosition.lat,currentPosition.lng,
+      coords[i][1],coords[i][0]
+    );
+    if(distance<minDistance) minDistance=distance;
+  }
+
+  if(minDistance>100){
+    status("Você parece estar fora da rota. Recalculando...");
+    calculateRoute();
+  }
+}
+
+function distanceMeters(lat1,lon1,lat2,lon2){
+  const R=6371000;
+  const rad=x=>x*Math.PI/180;
+  const dLat=rad(lat2-lat1);
+  const dLon=rad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2+
+    Math.cos(rad(lat1))*Math.cos(rad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+/* CLIMA OPEN-METEO */
+function weatherDescription(code){
+  if(code===0) return ["Ensolarado","☀️"];
+  if([1,2].includes(code)) return ["Parcialmente nublado","🌤️"];
+  if(code===3) return ["Nublado","☁️"];
+  if([45,48].includes(code)) return ["Neblina","🌫️"];
+  if([51,53,55,56,57].includes(code)) return ["Garoa","🌦️"];
+  if([61,63,65,66,67,80,81,82].includes(code)) return ["Chuva","🌧️"];
+  if([71,73,75,77,85,86].includes(code)) return ["Neve","❄️"];
+  if([95,96,99].includes(code)) return ["Tempestade com raios","⛈️"];
+  return ["Condição variável","🌡️"];
+}
+
+async function loadWeather(){
+  const position=currentPosition||{
+    lat:CONFIG.mapCenter[1],
+    lng:CONFIG.mapCenter[0]
+  };
+
+  try{
+    const url=CONFIG.weather+
+      "?latitude="+position.lat+
+      "&longitude="+position.lng+
+      "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,weather_code,wind_speed_10m,wind_gusts_10m"+
+      "&hourly=precipitation_probability,precipitation,visibility,weather_code"+
+      "&forecast_days=1&timezone=auto";
+
+    const response=await fetch(url);
+    if(!response.ok) throw new Error("Clima indisponível");
+    const data=await response.json();
+    const current=data.current;
+    const description=weatherDescription(current.weather_code);
+
+    document.getElementById("weatherIcon").textContent=description[1];
+    document.getElementById("weatherText").textContent=description[0];
+    document.getElementById("temperature").textContent=
+      Math.round(current.temperature_2m)+" °C";
+    document.getElementById("weatherDetails").textContent=
+      "Sensação "+Math.round(current.apparent_temperature)+" °C • "+
+      "Umidade "+current.relative_humidity_2m+"% • "+
+      "Vento "+current.wind_speed_10m+" km/h • "+
+      "Rajadas "+current.wind_gusts_10m+" km/h • "+
+      "Chuva "+current.precipitation+" mm.";
+
+    lastWeatherRequest=Date.now();
+    status("Clima atualizado • Open-Meteo");
+  }catch(error){
+    document.getElementById("weatherDetails").textContent=
+      "Não foi possível consultar o serviço meteorológico.";
+    status("Falha ao consultar clima.");
+  }
+}
+
+async function loadWeatherAlongRoute(){
+  if(!routeData) return;
+
+  const coords=routeData.geometry.coordinates;
+  const indexes=[
+    0,
+    Math.floor(coords.length*.25),
+    Math.floor(coords.length*.5),
+    Math.floor(coords.length*.75),
+    coords.length-1
+  ];
+
+  const unique=[...new Set(indexes)];
+  const alerts=[];
+
+  for(const index of unique){
+    const point=coords[index];
+    try{
+      const url=CONFIG.weather+
+        "?latitude="+point[1]+
+        "&longitude="+point[0]+
+        "&current=temperature_2m,precipitation,weather_code,wind_speed_10m"+
+        "&timezone=auto";
+
+      const response=await fetch(url);
+      if(!response.ok) continue;
+      const data=await response.json();
+      const current=data.current;
+      const description=weatherDescription(current.weather_code);
+
+      if(current.precipitation>0 || current.wind_speed_10m>40 ||
+         [45,48,95,96,99].includes(current.weather_code)){
+        alerts.push({
+          title:description[0],
+          detail:"Ponto aproximado da rota • "+
+            current.temperature_2m+" °C • Chuva "+
+            current.precipitation+" mm • Vento "+
+            current.wind_speed_10m+" km/h"
+        });
+      }
+    }catch(error){}
+  }
+
+  if(alerts.length){
+    const container=document.getElementById("alerts");
+    container.innerHTML="";
+    alerts.forEach(alert=>{
+      const div=document.createElement("div");
+      div.className="item warning";
+      const b=document.createElement("b");
+      b.textContent="🌦️ "+alert.title;
+      const p=document.createElement("div");
+      p.textContent=alert.detail;
+      div.append(b,p);
+      container.appendChild(div);
+    });
+  }
+}
+
+/* ALERTAS OFICIAIS */
+async function loadOfficialAlerts(){
+  const container=document.getElementById("alerts");
+  container.innerHTML=
+    '<div class="item">Consultando fontes oficiais...</div>';
+
+  const feeds=[
+    {
+      name:"Defesa Civil de São Paulo",
+      url:"https://www.defesacivil.sp.gov.br/"
+    },
+    {
+      name:"INMET",
+      url:"https://www.gov.br/inmet/pt-br"
+    }
+  ];
+
+  container.innerHTML="";
+  feeds.forEach(feed=>{
+    const div=document.createElement("div");
+    div.className="item warning";
+    const b=document.createElement("b");
+    b.textContent=feed.name;
+    const p=document.createElement("p");
+    p.textContent="Consulte o portal oficial para verificar os avisos ativos e a área de abrangência.";
+    const a=document.createElement("a");
+    a.href=feed.url;
+    a.target="_blank";
+    a.rel="noopener";
+    a.textContent="Abrir fonte oficial";
+    a.style.color="#22d3ee";
+    div.append(b,p,a);
+    container.appendChild(div);
+  });
+
+  status("Links oficiais de alerta apresentados. Não foi confirmada ocorrência em tempo real.");
+}
+
+/* SERVIÇOS PRÓXIMOS - OVERPASS */
+async function loadPOIs(category){
+  if(!currentPosition){
+    status("Ative o GPS para buscar serviços próximos.");
+    return;
+  }
+
+  const tags={
+    hospital:'["amenity"="hospital"]',
+    fuel:'["amenity"="fuel"]',
+    pharmacy:'["amenity"="pharmacy"]',
+    restaurant:'["amenity"="restaurant"]',
+    parking:'["amenity"="parking"]',
+    charging_station:'["amenity"="charging_station"]'
+  };
+
+  const query='[out:json][timeout:20];node'+
+    tags[category]+'(around:5000,'+
+    currentPosition.lat+','+currentPosition.lng+');out body 40;';
+
+  const result=document.getElementById("poiResults");
+  result.textContent="Buscando locais próximos...";
+
+  try{
+    const response=await fetch(CONFIG.overpass,{
+      method:"POST",
+      body:"data="+encodeURIComponent(query)
+    });
+    if(!response.ok) throw new Error("Serviço indisponível");
+    const data=await response.json();
+
+    poiMarkers.forEach(marker=>marker.remove());
+    poiMarkers=[];
+
+    result.innerHTML="";
+    if(!data.elements.length){
+      result.textContent="Nenhum local encontrado nesta consulta.";
+      return;
+    }
+
+    data.elements.forEach(place=>{
+      if(!place.lat || !place.lon) return;
+      const name=place.tags&&place.tags.name?
+        place.tags.name:"Local sem nome informado";
+
+      const marker=new maplibregl.Marker({color:"#10b981"})
+        .setLngLat([place.lon,place.lat])
+        .setPopup(new maplibregl.Popup().setText(name))
+        .addTo(map);
+      poiMarkers.push(marker);
+
+      const div=document.createElement("div");
+      div.className="item";
+      const b=document.createElement("b");
+      b.textContent=name;
+      const distance=document.createElement("div");
+      distance.textContent=
+        (distanceMeters(currentPosition.lat,currentPosition.lng,
+        place.lat,place.lon)/1000).toFixed(1)+" km de distância em linha reta";
+      const button=document.createElement("button");
+      button.className="btn";
+      button.textContent="Ver no mapa";
+      button.onclick=()=>map.flyTo({
+        center:[place.lon,place.lat],zoom:16
+      });
+      div.append(b,distance,button);
+      result.appendChild(div);
+    });
+
+    status(data.elements.length+" locais encontrados pelo OpenStreetMap.");
+  }catch(error){
+    result.textContent="Não foi possível consultar os serviços. Tente novamente.";
+    status("Falha na consulta de serviços.");
+  }
+}
+
+/* RELATOS LOCAIS */
+function getReports(){
+  try{
+    return JSON.parse(localStorage.getItem("alertaGPS_reports")||"[]");
+  }catch(error){
+    return [];
+  }
+}
+
+function saveReport(){
+  if(!currentPosition){
+    status("Ative o GPS para registrar a localização do relato.");
+    return;
+  }
+
+  const type=document.getElementById("reportType").value;
+  const description=document.getElementById("reportDescription").value.trim();
+
+  const reports=getReports();
+  reports.unshift({
+    id:Date.now(),
+    type,
+    description,
+    lat:currentPosition.lat,
+    lng:currentPosition.lng,
+    date:new Date().toLocaleString("pt-BR")
+  });
+
+  localStorage.setItem("alertaGPS_reports",JSON.stringify(reports));
+  document.getElementById("reportDescription").value="";
+  renderReports();
+  status("Relato salvo neste aparelho.");
+}
+
+function renderReports(){
+  const container=document.getElementById("reportList");
+  const reports=getReports();
+  container.innerHTML="";
+
+  if(!reports.length){
+    container.textContent="Nenhum relato salvo neste aparelho.";
+    return;
+  }
+
+  reports.forEach(report=>{
+    const div=document.createElement("div");
+    div.className="item warning";
+    const b=document.createElement("b");
+    b.textContent=report.type;
+    const p=document.createElement("p");
+    p.textContent=report.description||"Sem descrição";
+    const small=document.createElement("small");
+    small.textContent=report.date;
+    const button=document.createElement("button");
+    button.className="btn";
+    button.textContent="Ver localização";
+    button.onclick=()=>{
+      map.flyTo({center:[report.lng,report.lat],zoom:16});
+    };
+    div.append(b,p,small,document.createElement("br"),button);
+    container.appendChild(div);
+  });
+}
+
+/* FAVORITOS */
+function getFavorites(){
+  try{
+    return JSON.parse(localStorage.getItem("alertaGPS_favorites")||"[]");
+  }catch(error){
+    return [];
+  }
+}
+
+function saveFavorite(){
+  if(!currentPosition){
+    status("Ative o GPS primeiro.");
+    return;
+  }
+
+  const favorites=getFavorites();
+  favorites.unshift({
+    lat:currentPosition.lat,
+    lng:currentPosition.lng,
+    name:"Local salvo em "+new Date().toLocaleString("pt-BR")
+  });
+
+  localStorage.setItem("alertaGPS_favorites",JSON.stringify(favorites));
+  renderFavorites();
+  status("Favorito salvo.");
+}
+
+function renderFavorites(){
+  const container=document.getElementById("favoriteList");
+  container.innerHTML="";
+  getFavorites().forEach(favorite=>{
+    const div=document.createElement("div");
+    div.className="item";
+    const b=document.createElement("b");
+    b.textContent=favorite.name;
+    const button=document.createElement("button");
+    button.className="btn";
+    button.textContent="Abrir";
+    button.onclick=()=>{
+      map.flyTo({center:[favorite.lng,favorite.lat],zoom:16});
+    };
+    div.append(b,button);
+    container.appendChild(div);
+  });
+}
+
+/* PAINÉIS */
+function openTab(tab,title){
+  document.getElementById("side").classList.add("show");
+  document.getElementById("sideTitle").textContent=title;
+
+  document.querySelectorAll(".tabcontent").forEach(element=>{
+    element.classList.remove("active");
+  });
+  document.getElementById("tab-"+tab).classList.add("active");
+
+  if(tab==="reports") renderReports();
+  if(tab==="favorites") renderFavorites();
+}
+
+function closeSide(){
+  document.getElementById("side").classList.remove("show");
+}
+
+/* VOZ */
+function speak(text){
+  if(!("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const message=new SpeechSynthesisUtterance(text);
+  message.lang="pt-BR";
+  message.rate=1;
+  window.speechSynthesis.speak(message);
+}
+
+function speakStatus(){
+  const message=document.getElementById("routeMessage").textContent;
+  speak(message);
+}
+
+/* COMPARTILHAMENTO */
+async function shareLocation(){
+  if(!currentPosition){
+    status("Localização ainda não disponível.");
+    return;
+  }
+  const url="https://www.openstreetmap.org/?mlat="+
+    currentPosition.lat+"&mlon="+currentPosition.lng+
+    "#map=16/"+currentPosition.lat+"/"+currentPosition.lng;
+
+  if(navigator.share){
+    try{
+      await navigator.share({
+        title:"Minha localização - Alerta GPS",
+        text:"Veja minha localização.",
+        url:url
+      });
+    }catch(error){}
+  }else{
+    try{
+      await navigator.clipboard.writeText(url);
+      status("Link da localização copiado.");
+    }catch(error){
+      status("Não foi possível compartilhar neste navegador.");
+    }
+  }
+}
+
+/* ATUALIZAÇÕES AUTOMÁTICAS */
+setInterval(()=>{
+  if(currentPosition && Date.now()-lastWeatherRequest>300000){
+    loadWeather();
+  }
+},60000);
+
+/* INICIALIZAÇÃO */
+window.addEventListener("load",()=>{
+  renderReports();
+  renderFavorites();
+});
+
+window.addEventListener("online",()=>{
+  status("Conexão com a internet restabelecida.");
+});
+
+window.addEventListener("offline",()=>{
+  status("Sem conexão. Dados online podem não funcionar.");
+});
+
+</script>
+</body>
+</html>
