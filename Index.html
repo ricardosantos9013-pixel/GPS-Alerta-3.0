@@ -1,0 +1,966 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#080d19">
+<title>Alerta GPS</title>
+
+<link href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" rel="stylesheet">
+
+<style>
+:root {
+  --bg:#080d19;
+  --panel:#111b2d;
+  --panel2:#19263b;
+  --blue:#168cff;
+  --cyan:#00d9ff;
+  --green:#00d68f;
+  --red:#ff435a;
+  --yellow:#ffbd35;
+  --text:#f4f7ff;
+  --muted:#91a2bb;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:Arial,sans-serif;
+}
+header{
+  height:65px;
+  padding:10px 15px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  background:#101a2b;
+  border-bottom:1px solid #26364e;
+  position:relative;
+  z-index:10;
+}
+.logo{
+  font-size:21px;
+  font-weight:900;
+  letter-spacing:-1px;
+}
+.logo span{color:var(--cyan)}
+.status{
+  font-size:11px;
+  color:var(--green);
+}
+main{padding:12px;max-width:1100px;margin:auto}
+.card{
+  background:var(--panel);
+  border:1px solid #26364e;
+  border-radius:15px;
+  padding:14px;
+  margin-bottom:12px;
+}
+h3{margin:0 0 12px;font-size:15px}
+.muted{color:var(--muted);font-size:12px}
+button,input,select{
+  font-family:inherit;
+}
+button{
+  border:0;
+  border-radius:10px;
+  padding:12px;
+  background:var(--blue);
+  color:white;
+  font-weight:bold;
+  cursor:pointer;
+}
+button:active{transform:scale(.97)}
+button.secondary{background:var(--panel2)}
+button.green{background:#087c60}
+button.red{background:#b92c42}
+button.yellow{background:#805d16}
+input{
+  width:100%;
+  background:#080f1d;
+  color:white;
+  border:1px solid #31435e;
+  border-radius:10px;
+  padding:13px;
+  outline:none;
+}
+.row{display:flex;gap:8px}
+.row input{flex:1;min-width:0}
+.row button{white-space:nowrap}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:9px;
+}
+.tile{
+  background:var(--panel2);
+  border:1px solid #293c58;
+  padding:13px;
+  border-radius:12px;
+  cursor:pointer;
+}
+.tile b{display:block;margin-bottom:5px}
+.tile small{color:var(--muted)}
+#map{
+  height:390px;
+  border-radius:15px;
+  overflow:hidden;
+}
+.map-buttons{
+  display:flex;
+  gap:7px;
+  overflow-x:auto;
+  padding:10px 0;
+}
+.map-buttons button{flex-shrink:0}
+.result{
+  padding:10px;
+  background:#19263b;
+  border-radius:9px;
+  margin-top:7px;
+  font-size:13px;
+}
+.weather{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.temperature{font-size:38px;font-weight:bold}
+.weather-icon{font-size:45px}
+.alert{
+  padding:12px;
+  border-radius:10px;
+  margin:8px 0;
+  background:#19263b;
+  border-left:4px solid var(--yellow);
+  font-size:13px;
+}
+.alert.red{border-color:var(--red)}
+.alert.green{border-color:var(--green)}
+.radio{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  background:var(--panel2);
+  padding:12px;
+  border-radius:10px;
+  margin-bottom:8px;
+}
+.radio a{color:var(--cyan);font-weight:bold;text-decoration:none}
+nav{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  position:fixed;
+  bottom:0;
+  left:0;
+  width:100%;
+  background:#101a2b;
+  border-top:1px solid #26364e;
+  z-index:20;
+  padding:8px 3px calc(8px + env(safe-area-inset-bottom));
+}
+nav button{
+  background:transparent;
+  color:#aabbd2;
+  padding:8px 2px;
+  font-size:10px;
+}
+nav button span{display:block;font-size:19px;margin-bottom:4px}
+nav button.active{color:var(--cyan)}
+section{scroll-margin-top:15px}
+footer{
+  padding:25px 10px 100px;
+  text-align:center;
+  color:var(--muted);
+  font-size:11px;
+}
+.hidden{display:none}
+@media(min-width:700px){
+  .grid{grid-template-columns:repeat(4,1fr)}
+  #map{height:520px}
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="logo">🚨 ALERTA <span>GPS</span></div>
+  <div class="status" id="gpsStatus">● GPS aguardando</div>
+</header>
+
+<main>
+
+<!-- NAVEGAÇÃO -->
+<section id="inicio">
+<div class="card">
+<h3>📍 Para onde vamos?</h3>
+<div class="row">
+<input id="destination" placeholder="Digite endereço, cidade ou local">
+<button onclick="searchPlace()">BUSCAR</button>
+</div>
+<div id="searchResults"></div>
+<div class="row" style="margin-top:9px">
+<button class="green" style="flex:1" onclick="getLocation()">📍 Minha localização</button>
+<button class="secondary" style="flex:1" onclick="clearRoute()">Limpar rota</button>
+</div>
+<div id="routeInfo" class="result hidden"></div>
+</div>
+
+<div class="card">
+<h3>🗺️ Mapa inteligente</h3>
+<div class="map-buttons">
+<button onclick="setView(0)">2D</button>
+<button onclick="setView(60)">3D</button>
+<button class="secondary" onclick="locateOnMap()">📍 GPS</button>
+<button class="secondary" onclick="toggleSatellite()">Satélite</button>
+</div>
+<div id="map"></div>
+<p class="muted">Mapa interativo com localização, pesquisa e rotas.</p>
+</div>
+</section>
+
+<!-- CLIMA -->
+<section id="clima">
+<div class="card">
+<h3>🌦️ Clima em tempo real</h3>
+<div class="weather">
+<div>
+<div class="temperature" id="temperature">--°</div>
+<div id="weatherDescription">Consultando clima...</div>
+<p class="muted" id="weatherLocation">Aguardando localização</p>
+</div>
+<div class="weather-icon" id="weatherIcon">🌤️</div>
+</div>
+<div class="grid">
+<div class="tile"><b>💧 Umidade</b><small id="humidity">--</small></div>
+<div class="tile"><b>💨 Vento</b><small id="wind">--</small></div>
+<div class="tile"><b>🌧️ Chuva</b><small id="rain">--</small></div>
+<div class="tile"><b>☁️ Condição</b><small id="condition">--</small></div>
+</div>
+</div>
+
+<div class="card">
+<h3>⛈️ Alertas meteorológicos</h3>
+<div id="weatherAlerts">
+<div class="alert">Aguardando dados meteorológicos.</div>
+</div>
+<p class="muted">Dados meteorológicos fornecidos pela Open-Meteo. Alertas oficiais devem ser consultados nos canais da Defesa Civil e INMET.</p>
+</div>
+</section>
+
+<!-- TRÂNSITO -->
+<section id="transito">
+<div class="card">
+<h3>🚗 Trânsito e rodovias</h3>
+<div class="grid">
+<div class="tile" onclick="openLink('https://www.cetsp.com.br/')">
+<b>🚦 CET-SP</b><small>Trânsito da capital</small>
+</div>
+<div class="tile" onclick="openLink('https://www.der.sp.gov.br/')">
+<b>🛣️ DER-SP</b><small>Rodovias estaduais</small>
+</div>
+<div class="tile" onclick="openLink('https://www.artesp.sp.gov.br/')">
+<b>🚧 ARTESP</b><small>Concessionárias</small>
+</div>
+<div class="tile" onclick="openLink('https://www.gov.br/prf/pt-br')">
+<b>🚔 PRF</b><small>Rodovias federais</small>
+</div>
+</div>
+</div>
+
+<div class="card">
+<h3>📡 Consultas de rodovias</h3>
+<div class="alert">Informações externas: consulte os canais oficiais antes de viajar.</div>
+<div class="radio">
+<div><b>Castello Branco</b><br><small class="muted">SP-280</small></div>
+<a href="https://www.artesp.sp.gov.br/" target="_blank">Consultar ↗</a>
+</div>
+<div class="radio">
+<div><b>Raposo Tavares</b><br><small class="muted">SP-270</small></div>
+<a href="https://www.der.sp.gov.br/" target="_blank">Consultar ↗</a>
+</div>
+<div class="radio">
+<div><b>Rodovia Transbrasiliana</b><br><small class="muted">BR-153</small></div>
+<a href="https://www.gov.br/prf/pt-br" target="_blank">Consultar ↗</a>
+</div>
+<div class="radio">
+<div><b>Comandante João Ribeiro de Barros</b><br><small class="muted">SP-294</small></div>
+<a href="https://www.der.sp.gov.br/" target="_blank">Consultar ↗</a>
+</div>
+</div>
+
+<div class="card">
+<h3>📷 Câmeras rodoviárias</h3>
+<p class="muted">Consulte os painéis e câmeras disponibilizados publicamente pelas concessionárias e órgãos responsáveis.</p>
+<button class="secondary" style="width:100%" onclick="openLink('https://www.artesp.sp.gov.br/')">Consultar câmeras e rodovias</button>
+</div>
+</section>
+
+<!-- ALERTAS -->
+<section id="alertas">
+<div class="card">
+<h3>🚨 Central de ocorrências</h3>
+<p class="muted">Registre ocorrências para visualização neste aparelho.</p>
+<select id="incidentType" style="width:100%;padding:12px;background:#080f1d;color:white;border:1px solid #31435e;border-radius:10px">
+<option>Acidente</option>
+<option>Obra na pista</option>
+<option>Interdição</option>
+<option>Alagamento</option>
+<option>Obstáculo na pista</option>
+<option>Congestionamento</option>
+<option>Outro perigo</option>
+</select>
+<input id="incidentDescription" placeholder="Descreva a ocorrência" style="margin-top:8px">
+<button style="width:100%;margin-top:8px" onclick="reportIncident()">Enviar ocorrência</button>
+<div id="incidentList"></div>
+</div>
+
+<div class="card">
+<h3>⚡ Energia elétrica</h3>
+<div class="alert">Consulte as interrupções e comunicados diretamente na distribuidora.</div>
+<button class="secondary" style="width:100%" onclick="openLink('https://www.cpfl.com.br/')">CPFL Energia ↗</button>
+</div>
+
+<div class="card">
+<h3>🛡️ Defesa Civil</h3>
+<button class="secondary" style="width:100%" onclick="openLink('https://www.defesacivil.sp.gov.br/')">Defesa Civil de SP ↗</button>
+</div>
+</section>
+
+<!-- RÁDIOS -->
+<section id="radio">
+<div class="card">
+<h3>📻 Rádio ao vivo</h3>
+<div class="radio">
+<div><b>Mix FM São Paulo</b><br><small class="muted">Música e entretenimento</small></div>
+<a href="https://radiomixfm.com.br/" target="_blank">OUVIR ↗</a>
+</div>
+<div class="radio">
+<div><b>Nova Brasil FM SP</b><br><small class="muted">Música brasileira</small></div>
+<a href="https://novabrasilfm.com.br/" target="_blank">OUVIR ↗</a>
+</div>
+<div class="radio">
+<div><b>Rádio Disney Brasil</b><br><small class="muted">Música e entretenimento</small></div>
+<a href="https://www.disney.com.br/" target="_blank">OUVIR ↗</a>
+</div>
+<p class="muted">Os links abrem os canais das emissoras. A reprodução depende dos players e transmissões oficiais disponibilizados por elas.</p>
+</div>
+</section>
+
+<!-- TRANSPORTE -->
+<section id="transporte">
+<div class="card">
+<h3>🚆 Transporte público</h3>
+<div class="grid">
+<div class="tile" onclick="openLink('https://www.metro.sp.gov.br/')">
+<b>🚇 Metrô SP</b><small>Linhas e avisos</small>
+</div>
+<div class="tile" onclick="openLink('https://www.cptm.sp.gov.br/')">
+<b>🚆 CPTM</b><small>Trens metropolitanos</small>
+</div>
+<div class="tile" onclick="openLink('https://www.sptrans.com.br/')">
+<b>🚌 SPTrans</b><small>Ônibus municipais</small>
+</div>
+<div class="tile" onclick="openLink('https://www.emtu.sp.gov.br/')">
+<b>🚍 EMTU</b><small>Linhas metropolitanas</small>
+</div>
+</div>
+</div>
+
+<div class="card">
+<h3>✈️ Aeroportos</h3>
+<div class="radio">
+<b>GRU - Guarulhos</b>
+<a href="https://www.gru.com.br/" target="_blank">Consultar ↗</a>
+</div>
+<div class="radio">
+<b>Congonhas</b>
+<a href="https://www.aena.com.br/" target="_blank">Consultar ↗</a>
+</div>
+<div class="radio">
+<b>Viracopos</b>
+<a href="https://www.viracopos.com/" target="_blank">Consultar ↗</a>
+</div>
+</div>
+</section>
+
+<!-- FAVORITOS -->
+<section id="favoritos">
+<div class="card">
+<h3>⭐ Meus favoritos</h3>
+<input id="favoriteName" placeholder="Nome do local">
+<input id="favoriteAddress" placeholder="Endereço ou cidade" style="margin-top:8px">
+<button style="width:100%;margin-top:8px" onclick="saveFavorite()">Salvar favorito</button>
+<div id="favoriteList"></div>
+</div>
+</section>
+
+<!-- SOS -->
+<section id="sos">
+<div class="card">
+<h3>🆘 Emergência</h3>
+<div class="grid">
+<button class="red" onclick="callNumber('190')">🚔 Polícia 190</button>
+<button class="red" onclick="callNumber('192')">🚑 SAMU 192</button>
+<button class="red" onclick="callNumber('193')">🚒 Bombeiros 193</button>
+<button class="red" onclick="callNumber('191')">🛣️ PRF 191</button>
+</div>
+<p class="muted">Em uma emergência, ligue diretamente para o serviço responsável.</p>
+</div>
+</section>
+
+<footer>
+ALERTA GPS © 2026<br>
+Navegação • Clima • Trânsito • Segurança
+</footer>
+
+</main>
+
+<nav>
+<button class="active" onclick="go('inicio',this)"><span>🗺️</span>Mapa</button>
+<button onclick="go('clima',this)"><span>🌤️</span>Clima</button>
+<button onclick="go('transito',this)"><span>🚗</span>Trânsito</button>
+<button onclick="go('radio',this)"><span>📻</span>Rádio</button>
+<button onclick="go('sos',this)"><span>🆘</span>SOS</button>
+</nav>
+
+<script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
+
+<script>
+/* ==================================
+   ALERTA GPS - CONFIGURAÇÕES
+================================== */
+
+let currentPosition = null;
+let map = null;
+let userMarker = null;
+let destinationMarker = null;
+let routeLayer = false;
+let satellite = false;
+let currentRoute = null;
+
+const mapStyle = 'https://demotiles.maplibre.org/style.json';
+
+map = new maplibregl.Map({
+  container:'map',
+  style:mapStyle,
+  center:[-49.94,-22.21],
+  zoom:12,
+  pitch:0,
+  bearing:0
+});
+
+map.addControl(new maplibregl.NavigationControl(),'top-right');
+map.addControl(new maplibregl.ScaleControl());
+
+map.on('load',()=>{
+  console.log('Mapa carregado');
+});
+
+/* ==================================
+   NAVEGAÇÃO
+================================== */
+
+function go(id,button){
+  document.getElementById(id).scrollIntoView({
+    behavior:'smooth'
+  });
+
+  document.querySelectorAll('nav button')
+    .forEach(b=>b.classList.remove('active'));
+
+  button.classList.add('active');
+}
+
+function openLink(url){
+  window.open(url,'_blank');
+}
+
+function callNumber(number){
+  location.href='tel:'+number;
+}
+
+/* ==================================
+   GPS
+================================== */
+
+function getLocation(){
+  if(!navigator.geolocation){
+    alert('GPS não suportado neste aparelho.');
+    return;
+  }
+
+  document.getElementById('gpsStatus').textContent='● Localizando...';
+
+  navigator.geolocation.watchPosition(
+    position=>{
+      const lat=position.coords.latitude;
+      const lon=position.coords.longitude;
+
+      currentPosition=[lon,lat];
+
+      document.getElementById('gpsStatus').textContent='● GPS conectado';
+
+      if(!userMarker){
+        userMarker=new maplibregl.Marker({color:'#00d68f'})
+          .setLngLat(currentPosition)
+          .setPopup(new maplibregl.Popup().setText('Sua localização'))
+          .addTo(map);
+      }else{
+        userMarker.setLngLat(currentPosition);
+      }
+
+      map.flyTo({
+        center:currentPosition,
+        zoom:15
+      });
+
+      loadWeather(lat,lon);
+    },
+    error=>{
+      document.getElementById('gpsStatus').textContent='● GPS indisponível';
+      alert('Não foi possível acessar o GPS. Verifique as permissões e o HTTPS.');
+    },
+    {
+      enableHighAccuracy:true,
+      maximumAge:5000,
+      timeout:20000
+    }
+  );
+}
+
+function locateOnMap(){
+  if(!currentPosition){
+    getLocation();
+    return;
+  }
+  map.flyTo({center:currentPosition,zoom:16});
+}
+
+/* ==================================
+   BUSCA DE ENDEREÇOS
+================================== */
+
+async function searchPlace(){
+  const query=document.getElementById('destination').value.trim();
+
+  if(!query)return;
+
+  const results=document.getElementById('searchResults');
+  results.innerHTML='Pesquisando...';
+
+  try{
+    const url='https://nominatim.openstreetmap.org/search?format=json&limit=5&q='+encodeURIComponent(query);
+
+    const response=await fetch(url,{
+      headers:{'Accept-Language':'pt-BR'}
+    });
+
+    const data=await response.json();
+
+    results.innerHTML='';
+
+    if(!data.length){
+      results.innerHTML='Nenhum endereço encontrado.';
+      return;
+    }
+
+    data.forEach(place=>{
+      const div=document.createElement('div');
+      div.className='result';
+      div.textContent=place.display_name;
+
+      div.onclick=()=>{
+        const coordinates=[
+          Number(place.lon),
+          Number(place.lat)
+        ];
+
+        map.flyTo({
+          center:coordinates,
+          zoom:15
+        });
+
+        createDestinationMarker(coordinates);
+        results.innerHTML='';
+        calculateRoute(coordinates);
+      };
+
+      results.appendChild(div);
+    });
+
+  }catch(error){
+    results.textContent='Erro na pesquisa. Tente novamente.';
+  }
+}
+
+document.getElementById('destination')
+.addEventListener('keydown',e=>{
+  if(e.key==='Enter')searchPlace();
+});
+
+/* ==================================
+   MARCADOR DE DESTINO
+================================== */
+
+function createDestinationMarker(coords){
+  if(destinationMarker){
+    destinationMarker.remove();
+  }
+
+  destinationMarker=new maplibregl.Marker({color:'#ff435a'})
+    .setLngLat(coords)
+    .setPopup(new maplibregl.Popup().setText('Destino'))
+    .addTo(map);
+}
+
+/* ==================================
+   CÁLCULO DE ROTAS
+================================== */
+
+async function calculateRoute(destination){
+
+  if(!currentPosition){
+    alert('Ative sua localização GPS primeiro.');
+    return;
+  }
+
+  const origin=currentPosition;
+
+  const url=
+    'https://router.project-osrm.org/route/v1/driving/'+
+    origin.join(',')+';'+destination.join(',')+
+    '?overview=full&geometries=geojson&steps=true';
+
+  try{
+    const response=await fetch(url);
+    const data=await response.json();
+
+    if(!data.routes || !data.routes.length){
+      alert('Não foi possível encontrar uma rota.');
+      return;
+    }
+
+    currentRoute=data.routes[0];
+
+    const distance=(currentRoute.distance/1000).toFixed(1);
+    const duration=Math.round(currentRoute.duration/60);
+
+    const info=document.getElementById('routeInfo');
+
+    info.classList.remove('hidden');
+    info.innerHTML=
+      '<b>🛣️ Rota encontrada</b><br>'+
+      'Distância: '+distance+' km<br>'+
+      'Tempo estimado: '+duration+' minutos<br>'+
+      '<small>Estimativa baseada em velocidades de referência, não em trânsito ao vivo.</small>';
+
+    if(map.getSource('route')){
+      map.getSource('route').setData(currentRoute.geometry);
+    }else{
+      map.addSource('route',{
+        type:'geojson',
+        data:currentRoute.geometry
+      });
+
+      map.addLayer({
+        id:'route-line',
+        type:'line',
+        source:'route',
+        paint:{
+          'line-color':'#168cff',
+          'line-width':6,
+          'line-opacity':0.9
+        }
+      });
+    }
+
+    const bounds=new maplibregl.LngLatBounds();
+
+    currentRoute.geometry.coordinates.forEach(coord=>{
+      bounds.extend(coord);
+    });
+
+    map.fitBounds(bounds,{padding:60});
+
+  }catch(error){
+    alert('Erro ao calcular rota.');
+  }
+}
+
+function clearRoute(){
+  if(map.getLayer('route-line')){
+    map.removeLayer('route-line');
+  }
+  if(map.getSource('route')){
+    map.removeSource('route');
+  }
+
+  if(destinationMarker){
+    destinationMarker.remove();
+    destinationMarker=null;
+  }
+
+  currentRoute=null;
+
+  document.getElementById('routeInfo').classList.add('hidden');
+}
+
+/* ==================================
+   MAPA 2D E 3D
+================================== */
+
+function setView(pitch){
+  map.easeTo({
+    pitch:pitch,
+    duration:1000
+  });
+}
+
+function toggleSatellite(){
+  satellite=!satellite;
+
+  alert(
+    satellite
+    ? 'O mapa base atual não possui imagens de satélite. Para ativar satélite, configure um provedor de imagens com chave de API.'
+    : 'Mapa padrão selecionado.'
+  );
+}
+
+/* ==================================
+   CLIMA - OPEN METEO
+================================== */
+
+async function loadWeather(lat,lon){
+
+  try{
+    const url=
+      'https://api.open-meteo.com/v1/forecast?latitude='+
+      lat+'&longitude='+lon+
+      '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,weather_code,wind_speed_10m,wind_gusts_10m'+
+      '&hourly=precipitation_probability,precipitation,weather_code'+
+      '&timezone=auto&forecast_days=1';
+
+    const response=await fetch(url);
+    const data=await response.json();
+
+    const c=data.current;
+
+    document.getElementById('temperature').textContent=
+      Math.round(c.temperature_2m)+'°C';
+
+    document.getElementById('humidity').textContent=
+      c.relative_humidity_2m+'%';
+
+    document.getElementById('wind').textContent=
+      c.wind_speed_10m+' km/h';
+
+    document.getElementById('rain').textContent=
+      c.precipitation+' mm';
+
+    const weather=getWeather(c.weather_code);
+
+    document.getElementById('weatherDescription').textContent=
+      weather.description;
+
+    document.getElementById('condition').textContent=
+      weather.description;
+
+    document.getElementById('weatherIcon').textContent=
+      weather.icon;
+
+    document.getElementById('weatherLocation').textContent=
+      'Sua localização atual';
+
+    const alerts=document.getElementById('weatherAlerts');
+
+    alerts.innerHTML='';
+
+    if(c.precipitation>0 || c.rain>0 || c.showers>0){
+      alerts.innerHTML+=
+        '<div class="alert red">🌧️ Chuva detectada na localização atual.</div>';
+    }
+
+    if(c.wind_gusts_10m>=50){
+      alerts.innerHTML+=
+        '<div class="alert red">💨 Rajadas de vento intensas. Redobre a atenção.</div>';
+    }
+
+    if(c.precipitation===0 && c.rain===0 && c.showers===0 && c.wind_gusts_10m<50){
+      alerts.innerHTML=
+        '<div class="alert green">✅ Sem precipitação atual registrada e sem rajadas acima de 50 km/h.</div>';
+    }
+
+  }catch(error){
+    document.getElementById('weatherDescription').textContent=
+      'Não foi possível consultar o clima.';
+  }
+}
+
+function getWeather(code){
+
+  if(code===0)return {description:'Céu limpo',icon:'☀️'};
+  if(code<=2)return {description:'Parcialmente nublado',icon:'🌤️'};
+  if(code===3)return {description:'Nublado',icon:'☁️'};
+  if(code<=48)return {description:'Neblina',icon:'🌫️'};
+  if(code<=57)return {description:'Garoa',icon:'🌦️'};
+  if(code<=67)return {description:'Chuva',icon:'🌧️'};
+  if(code<=77)return {description:'Neve',icon:'❄️'};
+  if(code<=82)return {description:'Pancadas de chuva',icon:'🌧️'};
+  if(code<=86)return {description:'Neve intensa',icon:'❄️'};
+  if(code<=99)return {description:'Tempestade com possibilidade de raios',icon:'⛈️'};
+
+  return {description:'Condição desconhecida',icon:'🌡️'};
+}
+
+/* ==================================
+   OCORRÊNCIAS LOCAIS
+================================== */
+
+function reportIncident(){
+
+  const type=document.getElementById('incidentType').value;
+  const description=document.getElementById('incidentDescription').value;
+
+  if(!currentPosition){
+    alert('Ative o GPS antes de registrar uma ocorrência.');
+    return;
+  }
+
+  const incidents=JSON.parse(
+    localStorage.getItem('incidents')||'[]'
+  );
+
+  incidents.unshift({
+    type,
+    description,
+    lat:currentPosition[1],
+    lon:currentPosition[0],
+    date:new Date().toLocaleString('pt-BR')
+  });
+
+  localStorage.setItem('incidents',JSON.stringify(incidents));
+
+  document.getElementById('incidentDescription').value='';
+
+  renderIncidents();
+
+  alert('Ocorrência salva neste aparelho.');
+}
+
+function renderIncidents(){
+
+  const incidents=JSON.parse(
+    localStorage.getItem('incidents')||'[]'
+  );
+
+  const list=document.getElementById('incidentList');
+
+  list.innerHTML='';
+
+  incidents.forEach(item=>{
+    const div=document.createElement('div');
+    div.className='alert red';
+
+    const title=document.createElement('b');
+    title.textContent='🚨 '+item.type;
+
+    const description=document.createElement('p');
+    description.textContent=item.description||'Sem descrição';
+
+    const date=document.createElement('small');
+    date.textContent=item.date;
+
+    div.append(title,description,date);
+    list.appendChild(div);
+  });
+}
+
+/* ==================================
+   FAVORITOS
+================================== */
+
+function saveFavorite(){
+
+  const name=document.getElementById('favoriteName').value.trim();
+  const address=document.getElementById('favoriteAddress').value.trim();
+
+  if(!name || !address){
+    alert('Preencha o nome e o endereço.');
+    return;
+  }
+
+  const favorites=JSON.parse(
+    localStorage.getItem('favorites')||'[]'
+  );
+
+  favorites.push({name,address});
+
+  localStorage.setItem('favorites',JSON.stringify(favorites));
+
+  document.getElementById('favoriteName').value='';
+  document.getElementById('favoriteAddress').value='';
+
+  renderFavorites();
+}
+
+async function renderFavorites(){
+
+  const favorites=JSON.parse(
+    localStorage.getItem('favorites')||'[]'
+  );
+
+  const list=document.getElementById('favoriteList');
+  list.innerHTML='';
+
+  favorites.forEach((item,index)=>{
+
+    const div=document.createElement('div');
+    div.className='result';
+
+    const title=document.createElement('b');
+    title.textContent='⭐ '+item.name;
+
+    const address=document.createElement('p');
+    address.textContent=item.address;
+
+    const button=document.createElement('button');
+    button.textContent='Abrir no mapa';
+    button.onclick=()=>searchFavorite(item.address);
+
+    const remove=document.createElement('button');
+    remove.className='red';
+    remove.style.marginLeft='5px';
+    remove.textContent='Excluir';
+    remove.onclick=()=>{
+      favorites.splice(index,1);
+      localStorage.setItem('favorites',JSON.stringify(favorites));
+      renderFavorites();
+    };
+
+    div.append(title,address,button,remove);
+    list.appendChild(div);
+  });
+}
+
+async function searchFavorite(address){
+  document.getElementById('destination').value=address;
+  searchPlace();
+}
+
+/* ==================================
+   INICIALIZAÇÃO
+================================== */
+
+renderFavorites();
+renderIncidents();
+
+// Solicita GPS somente após autorização do usuário.
+// O navegador exige HTTPS para geolocalização.
+
+</script>
+</body>
+</html>
